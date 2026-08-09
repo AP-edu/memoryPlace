@@ -1,0 +1,39 @@
+
+import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { supabase } from "@/lib/supabase";
+
+export async function GET(req: NextRequest) {
+  const session = await getServerSession(authOptions);
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const deckId = req.nextUrl.searchParams.get("deck");
+  let query = supabase.from("flashcards").select("*").order("created_at", { ascending: false });
+  if (session.user.role !== "admin") query = query.eq("owner", session.user.id);
+  if (deckId) query = query.eq("deck_id", deckId);
+
+  const { data, error } = await query;
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  return NextResponse.json(data);
+}
+
+export async function POST(req: NextRequest) {
+  const session = await getServerSession(authOptions);
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { question, answer, deck_id } = await req.json();
+  if (!question || !answer || !deck_id) {
+    return NextResponse.json({ error: "Question, answer, and deck_id required" }, { status: 400 });
+  }
+
+  const { data, error } = await supabase
+    .from("flashcards")
+    .insert({ question, answer, deck_id, owner: session.user.id })
+    .select()
+    .single();
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json(data, { status: 201 });
+}
