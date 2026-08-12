@@ -10,8 +10,11 @@ export async function GET(req: NextRequest) {
 
   const deckId = req.nextUrl.searchParams.get("deck");
   let query = supabase.from("flashcards").select("*").order("created_at", { ascending: false });
-  if (session.user.role !== "admin") query = query.eq("owner", session.user.id);
-  if (deckId) query = query.eq("deck_id", deckId);
+  if (deckId) {
+    query = query.eq("deck_id", deckId);
+  } else {
+    query = query.eq("owner", session.user.id);
+  }
 
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

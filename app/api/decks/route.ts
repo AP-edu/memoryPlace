@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
 
   const courseId = req.nextUrl.searchParams.get("course");
   let query = supabase.from("decks").select("*").order("created_at", { ascending: false });
-  if (session.user.role !== "admin") query = query.eq("owner", session.user.id);
+  query = query.eq("owner", session.user.id);
   if (courseId) query = query.eq("course_id", courseId);
 
   const { data, error } = await query;

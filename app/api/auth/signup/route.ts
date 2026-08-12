@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
     const { data: existing } = await supabase
       .from("users")
       .select("id")
-      .eq("email", email)
+      .ilike("email", email)
       .maybeSingle();
 
     if (existing) {
@@ -38,7 +38,8 @@ export async function POST(req: NextRequest) {
     if (error) throw error;
 
     return NextResponse.json(user, { status: 201 });
-  } catch {
+  } catch (err) {
+    console.error("SIGNUP ERROR:", err);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 }

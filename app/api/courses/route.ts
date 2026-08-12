@@ -9,7 +9,7 @@ export async function GET() {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   let query = supabase.from("courses").select("*").order("created_at", { ascending: false });
-  if (session.user.role !== "admin") query = query.eq("owner", session.user.id);
+  query = query.eq("owner", session.user.id);
 
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

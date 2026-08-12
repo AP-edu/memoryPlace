@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
 
   const deckId = req.nextUrl.searchParams.get("deck");
   let query = supabase.from("quiz_results").select("*").order("created_at", { ascending: false });
-  if (session.user.role !== "admin") query = query.eq("user_id", session.user.id);
+  query = query.eq("user_id", session.user.id);
   if (deckId) query = query.eq("deck_id", deckId);
 
   const { data, error } = await query;
@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     .eq("id", deck_id)
     .maybeSingle();
   if (!deck) return NextResponse.json({ error: "Deck not found" }, { status: 404 });
-  if (session.user.role !== "admin" && deck.owner !== session.user.id) {
+  if (deck.owner !== session.user.id) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

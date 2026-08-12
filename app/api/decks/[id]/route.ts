@@ -13,7 +13,6 @@ export async function GET(req: NextRequest, { params }: RouteContext) {
 
   const { data: deck } = await supabase.from("decks").select("*").eq("id", id).single();
   if (!deck) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  if (!canModify(session, deck.owner)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   return NextResponse.json(deck);
 }
