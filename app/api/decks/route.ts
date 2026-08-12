@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
 
   const courseId = req.nextUrl.searchParams.get("course");
   let query = supabase.from("decks").select("*").order("created_at", { ascending: false });
-  if (session.user.role !== "admin") query = query.eq("owner", session.user.id);
+  query = query.eq("owner", session.user.id);
   if (courseId) query = query.eq("course_id", courseId);
 
   const { data, error } = await query;
@@ -26,6 +26,16 @@ export async function POST(req: NextRequest) {
   const { title, course_id } = await req.json();
   if (!title || !course_id) {
     return NextResponse.json({ error: "Title and course_id required" }, { status: 400 });
+  }
+
+  const { data: course } = await supabase
+    .from("courses")
+    .select("id, owner")
+    .eq("id", course_id)
+    .maybeSingle();
+  if (!course) return NextResponse.json({ error: "Course not found" }, { status: 404 });
+  if (session.user.role !== "admin" && course.owner !== session.user.id) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const { data, error } = await supabase

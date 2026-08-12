@@ -1,40 +1,64 @@
-
 "use client";
 import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useFetch } from "@/hooks/useFetch";
-
-interface Flashcard {
-  id: string;
-  question: string;
-  answer: string;
-}
+import type { Deck, Flashcard } from "@/types/database";
 
 export default function QuizPage() {
   const { deckId } = useParams<{ deckId: string }>();
   const router = useRouter();
-  const { data: cards, loading } = useFetch<Flashcard[]>(`/api/flashcards?deck=${deckId}`);
+  const { data: cards, loading, error } = useFetch<Flashcard[]>(
+    deckId ? `/api/flashcards?deck=${deckId}` : null
+  );
+  const { data: deck, loading: loadingDeck, error: deckError } = useFetch<Deck>(
+    deckId ? `/api/decks/${deckId}` : null
+  );
   const [index, setIndex] = useState(0);
   const [showAnswer, setShowAnswer] = useState(false);
   const [score, setScore] = useState(0);
 
-  if (loading) return <p className="p-6">Loading quiz...</p>;
-  if (!cards?.length) return <p className="p-6">This deck has no flashcards yet.</p>;
+  if (!deckId) return <p className="p-6">This quiz link is missing a deck id.</p>;
+  if (loading || loadingDeck) return <p className="p-6">Loading quiz...</p>;
+
+  if (!deck) {
+    return (
+      <p className="p-6">
+        This deck could not be found{deckError ? ` (${deckError})` : ""}.
+      </p>
+    );
+  }
+
+  if (error) return <p className="p-6 text-red-600">Failed to load quiz: {error}</p>;
+
+  if (!cards?.length) {
+    return (
+      <div className="max-w-lg mx-auto p-6 text-center">
+        <p className="text-sm text-gray-500 mb-2">{deck.title}</p>
+        <p className="text-lg">This deck has no flashcards yet.</p>
+      </div>
+    );
+  }
 
   const card = cards[index];
   const isLast = index === cards.length - 1;
 
   async function handleAnswer(correct: boolean) {
+    if (!deckId || !cards) return;
     const nextScore = correct ? score + 1 : score;
     setScore(nextScore);
 
     if (isLast) {
-      await fetch("/api/quiz-results", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ deck_id: deckId, score: nextScore, total: cards!.length }),
-      });
-      router.push(`/results?score=${nextScore}&total=${cards!.length}`);
+      try {
+        const res = await fetch("/api/quiz-results", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ deck_id: deckId, score: nextScore, total: cards.length }),
+        });
+        if (!res.ok) console.error("Failed to save quiz result");
+      } catch {
+        console.error("Failed to save quiz result");
+      }
+      router.push(`/results?score=${nextScore}&total=${cards.length}`);
     } else {
       setIndex(index + 1);
       setShowAnswer(false);
@@ -43,6 +67,7 @@ export default function QuizPage() {
 
   return (
     <div className="max-w-lg mx-auto p-6 text-center">
+      <p className="text-sm text-gray-500 mb-2">{deck.title}</p>
       <p className="text-sm text-gray-500 mb-2">
         Card {index + 1} of {cards.length}
       </p>

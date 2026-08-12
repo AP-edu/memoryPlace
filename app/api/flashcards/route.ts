@@ -10,8 +10,11 @@ export async function GET(req: NextRequest) {
 
   const deckId = req.nextUrl.searchParams.get("deck");
   let query = supabase.from("flashcards").select("*").order("created_at", { ascending: false });
-  if (session.user.role !== "admin") query = query.eq("owner", session.user.id);
-  if (deckId) query = query.eq("deck_id", deckId);
+  if (deckId) {
+    query = query.eq("deck_id", deckId);
+  } else {
+    query = query.eq("owner", session.user.id);
+  }
 
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -26,6 +29,16 @@ export async function POST(req: NextRequest) {
   const { question, answer, deck_id } = await req.json();
   if (!question || !answer || !deck_id) {
     return NextResponse.json({ error: "Question, answer, and deck_id required" }, { status: 400 });
+  }
+
+  const { data: deck } = await supabase
+    .from("decks")
+    .select("id, owner")
+    .eq("id", deck_id)
+    .maybeSingle();
+  if (!deck) return NextResponse.json({ error: "Deck not found" }, { status: 404 });
+  if (session.user.role !== "admin" && deck.owner !== session.user.id) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const { data, error } = await supabase

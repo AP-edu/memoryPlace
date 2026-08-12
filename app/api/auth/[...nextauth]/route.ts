@@ -18,7 +18,7 @@ export const authOptions: NextAuthOptions = {
         const { data: user } = await supabase
           .from("users")
           .select("*")
-          .eq("email", credentials.email)
+          .ilike("email", credentials.email)
           .maybeSingle();
 
         if (!user) return null;

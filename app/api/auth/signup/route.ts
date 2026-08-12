@@ -13,25 +13,33 @@ export async function POST(req: NextRequest) {
     const { data: existing } = await supabase
       .from("users")
       .select("id")
-      .eq("email", email)
+      .ilike("email", email)
       .maybeSingle();
 
     if (existing) {
       return NextResponse.json({ error: "Email already registered" }, { status: 409 });
     }
 
+    const { data: firstUser } = await supabase
+      .from("users")
+      .select("id")
+      .limit(1)
+      .maybeSingle();
+
+    const role = firstUser ? "user" : "admin";
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const { data: user, error } = await supabase
       .from("users")
-      .insert({ name, email, password: hashedPassword, role: "user" })
+      .insert({ name, email, password: hashedPassword, role })
       .select("id, name, email")
       .single();
 
     if (error) throw error;
 
     return NextResponse.json(user, { status: 201 });
-  } catch {
+  } catch (err) {
+    console.error("SIGNUP ERROR:", err);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 }
