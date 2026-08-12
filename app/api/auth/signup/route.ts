@@ -20,11 +20,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Email already registered" }, { status: 409 });
     }
 
+    const { data: firstUser } = await supabase
+      .from("users")
+      .select("id")
+      .limit(1)
+      .maybeSingle();
+
+    const role = firstUser ? "user" : "admin";
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const { data: user, error } = await supabase
       .from("users")
-      .insert({ name, email, password: hashedPassword, role: "user" })
+      .insert({ name, email, password: hashedPassword, role })
       .select("id, name, email")
       .single();
 

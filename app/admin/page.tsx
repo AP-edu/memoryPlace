@@ -1,22 +1,19 @@
-
 "use client";
 import { useFetch } from "@/hooks/useFetch";
-
-interface Course {
-  id: string;
-  title: string;
-  owner: string;
-}
+import type { Course } from "@/types/database";
 
 export default function AdminDashboard() {
-  const { data: courses, loading, refetch } = useFetch<Course[]>("/api/courses");
+  const { data: courses, loading, error, refetch } = useFetch<Course[]>("/api/courses");
 
   async function handleDelete(id: string) {
-    await fetch(`/api/courses/${id}`, { method: "DELETE" });
+    if (!confirm("Remove this course?")) return;
+    const res = await fetch(`/api/courses/${id}`, { method: "DELETE" });
+    if (!res.ok) return;
     refetch();
   }
 
   if (loading) return <p className="p-6">Loading...</p>;
+  if (error) return <p className="p-6 text-red-600">Failed to load courses: {error}</p>;
 
   return (
     <div className="max-w-4xl mx-auto p-4 sm:p-6">

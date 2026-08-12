@@ -1,24 +1,19 @@
-
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession, Session } from "next-auth";
+import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { supabase } from "@/lib/supabase";
-import { Course } from "@/types/database";
+import { canModify } from "@/lib/ownership";
 
 type RouteContext = { params: Promise<{ id: string }> };
-
-function canModify(session: Session | null, course: Course): boolean {
-  if (!session) return false;
-  return session.user.role === "admin" || course.owner === session.user.id;
-}
 
 export async function GET(req: NextRequest, { params }: RouteContext) {
   const { id } = await params;
   const session = await getServerSession(authOptions);
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { data: course, error } = await supabase.from("courses").select("*").eq("id", id).single();
   if (error || !course) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  if (!canModify(session, course)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!canModify(session, course.owner)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   return NextResponse.json(course);
 }
@@ -26,12 +21,20 @@ export async function GET(req: NextRequest, { params }: RouteContext) {
 export async function PUT(req: NextRequest, { params }: RouteContext) {
   const { id } = await params;
   const session = await getServerSession(authOptions);
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { data: course } = await supabase.from("courses").select("*").eq("id", id).single();
   if (!course) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  if (!canModify(session, course)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!canModify(session, course.owner)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const updates = await req.json();
+  const { title, description } = await req.json();
+  if (title === undefined && description === undefined) {
+    return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
+  }
+  const updates: { title?: string; description?: string } = {};
+  if (title !== undefined) updates.title = title;
+  if (description !== undefined) updates.description = description;
+
   const { data, error } = await supabase.from("courses").update(updates).eq("id", id).select().single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
@@ -41,10 +44,11 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
 export async function DELETE(req: NextRequest, { params }: RouteContext) {
   const { id } = await params;
   const session = await getServerSession(authOptions);
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { data: course } = await supabase.from("courses").select("*").eq("id", id).single();
   if (!course) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  if (!canModify(session, course)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!canModify(session, course.owner)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { error } = await supabase.from("courses").delete().eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

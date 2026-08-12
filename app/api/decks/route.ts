@@ -28,6 +28,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Title and course_id required" }, { status: 400 });
   }
 
+  const { data: course } = await supabase
+    .from("courses")
+    .select("id, owner")
+    .eq("id", course_id)
+    .maybeSingle();
+  if (!course) return NextResponse.json({ error: "Course not found" }, { status: 404 });
+  if (session.user.role !== "admin" && course.owner !== session.user.id) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   const { data, error } = await supabase
     .from("decks")
     .insert({ title, course_id, owner: session.user.id })

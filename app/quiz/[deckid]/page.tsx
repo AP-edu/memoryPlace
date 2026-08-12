@@ -1,40 +1,43 @@
-
 "use client";
 import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useFetch } from "@/hooks/useFetch";
-
-interface Flashcard {
-  id: string;
-  question: string;
-  answer: string;
-}
+import type { Flashcard } from "@/types/database";
 
 export default function QuizPage() {
   const { deckId } = useParams<{ deckId: string }>();
   const router = useRouter();
-  const { data: cards, loading } = useFetch<Flashcard[]>(`/api/flashcards?deck=${deckId}`);
+  const { data: cards, loading, error } = useFetch<Flashcard[]>(
+    deckId ? `/api/flashcards?deck=${deckId}` : null
+  );
   const [index, setIndex] = useState(0);
   const [showAnswer, setShowAnswer] = useState(false);
   const [score, setScore] = useState(0);
 
   if (loading) return <p className="p-6">Loading quiz...</p>;
+  if (error) return <p className="p-6 text-red-600">Failed to load quiz: {error}</p>;
   if (!cards?.length) return <p className="p-6">This deck has no flashcards yet.</p>;
 
   const card = cards[index];
   const isLast = index === cards.length - 1;
 
   async function handleAnswer(correct: boolean) {
+    if (!deckId || !cards) return;
     const nextScore = correct ? score + 1 : score;
     setScore(nextScore);
 
     if (isLast) {
-      await fetch("/api/quiz-results", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ deck_id: deckId, score: nextScore, total: cards!.length }),
-      });
-      router.push(`/results?score=${nextScore}&total=${cards!.length}`);
+      try {
+        const res = await fetch("/api/quiz-results", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ deck_id: deckId, score: nextScore, total: cards.length }),
+        });
+        if (!res.ok) console.error("Failed to save quiz result");
+      } catch {
+        console.error("Failed to save quiz result");
+      }
+      router.push(`/results?score=${nextScore}&total=${cards.length}`);
     } else {
       setIndex(index + 1);
       setShowAnswer(false);
