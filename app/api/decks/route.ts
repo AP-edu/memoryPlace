@@ -2,14 +2,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
-import { supabase } from "@/lib/supabase";
+import { getSupabase } from "@/lib/supabase";
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const courseId = req.nextUrl.searchParams.get("course");
-  let query = supabase.from("decks").select("*").order("created_at", { ascending: false });
+  let query = getSupabase().from("decks").select("*").order("created_at", { ascending: false });
   query = query.eq("owner", session.user.id);
   if (courseId) query = query.eq("course_id", courseId);
 
@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Title and course_id required" }, { status: 400 });
   }
 
-  const { data: course } = await supabase
+  const { data: course } = await getSupabase()
     .from("courses")
     .select("id, owner")
     .eq("id", course_id)
@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from("decks")
     .insert({ title, course_id, owner: session.user.id })
     .select()

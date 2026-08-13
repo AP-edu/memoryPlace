@@ -2,14 +2,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
-import { supabase } from "@/lib/supabase";
+import { getSupabase } from "@/lib/supabase";
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const deckId = req.nextUrl.searchParams.get("deck");
-  let query = supabase.from("flashcards").select("*").order("created_at", { ascending: false });
+  let query = getSupabase().from("flashcards").select("*").order("created_at", { ascending: false });
   if (deckId) {
     query = query.eq("deck_id", deckId);
   } else {
@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Question, answer, and deck_id required" }, { status: 400 });
   }
 
-  const { data: deck } = await supabase
+  const { data: deck } = await getSupabase()
     .from("decks")
     .select("id, owner")
     .eq("id", deck_id)
@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from("flashcards")
     .insert({ question, answer, deck_id, owner: session.user.id })
     .select()
