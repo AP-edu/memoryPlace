@@ -32,43 +32,42 @@ function CoursePage() {
     refetch();
   }
 
-  if (loading) return <p className="p-6 text-gray-500">Loading decks...</p>;
-  if (error) return <p className="p-6 text-red-600">Failed to load decks: {error}</p>;
+  if (loading) return <p className="p-6 text-muted-foreground">Loading decks...</p>;
+  if (error) return <p className="p-6 text-destructive">Failed to load decks: {error}</p>;
 
   return (
-    <div className="max-w-3xl mx-auto p-4 sm:p-6">
-      <Link href="/dashboard" className="text-sm text-blue-600 hover:underline">
+    <div className="mx-auto max-w-3xl p-4 sm:p-6">
+      <Link href="/dashboard" className="btn-ghost">
         {"\u2190 Back to courses"}
       </Link>
-      <h1 className="text-2xl font-bold mb-4 mt-2">Course Decks</h1>
+      <h1 className="mb-1 mt-3 text-3xl font-semibold">Course Decks</h1>
+      <p className="mb-5 text-sm text-muted-foreground">The doors of this room.</p>
 
-      <form onSubmit={handleCreate} className="flex gap-2 mb-4">
+      <form onSubmit={handleCreate} className="mb-4 flex gap-2">
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="New deck title"
-          className="flex-1 border rounded-lg px-3 py-2"
+          className="input-base flex-1"
         />
-        <button className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
-          Add
-        </button>
+        <button className="btn-primary">Add</button>
       </form>
-      {formError && <p className="text-red-600 text-sm mb-4">{formError}</p>}
+      {formError && <p className="mb-4 text-sm text-destructive">{formError}</p>}
 
-      {decks?.length === 0 && <p className="text-gray-500">No decks yet — add one above.</p>}
+      {decks?.length === 0 && <p className="text-muted-foreground">No decks yet — add one above.</p>}
 
       <div className="space-y-3">
         {decks?.map((deck) => (
-          <div key={deck.id} className="border rounded-lg p-4 flex items-center justify-between">
-            <span className="font-medium">{deck.title}</span>
-            <div className="flex gap-3 text-sm">
-              <Link href={`/quiz/${deck.id}`} className="text-blue-600 hover:underline">
+          <div key={deck.id} className="card-base flex items-center justify-between p-4">
+            <span className="font-display text-lg font-medium">{deck.title}</span>
+            <div className="flex items-center gap-4 text-sm">
+              <Link href={`/quiz/${deck.id}`} className="btn-primary `px-3` `py-1.5`">
                 Study
               </Link>
-              <Link href={`/decks/${deck.id}`} className="text-gray-600 hover:underline">
+              <Link href={`/decks/${deck.id}`} className="btn-ghost">
                 Manage cards
               </Link>
-              <button onClick={() => handleDelete(deck.id)} className="text-red-600 hover:underline">
+              <button onClick={() => handleDelete(deck.id)} className="btn-danger">
                 Delete
               </button>
             </div>

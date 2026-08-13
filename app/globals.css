@@ -1,26 +1,106 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f7f2e7;
+  --foreground: #292217;
+  --card: #fffdf5;
+  --card-foreground: #292217;
+  --muted: #ece4d2;
+  --muted-foreground: #8a7f6a;
+  --border: #e3d9c2;
+  --primary: #0f766e;
+  --primary-foreground: #f0fdfa;
+  --accent: #b45309;
+  --accent-foreground: #fffbeb;
+  --destructive: #b91c1c;
+  --ring: #14b8a6;
+  --glow: radial-gradient(1200px 600px at 50% -15%, rgb(15 118 110 / 0.1), transparent 60%),
+    radial-gradient(800px 500px at 100% 100%, rgb(180 83 9 / 0.07), transparent 60%);
+  --shadow-card: 0 1px 2px rgb(41 34 23 / 0.05), 0 6px 20px -10px rgb(41 34 23 / 0.16);
+  --shadow-card-hover: 0 2px 4px rgb(41 34 23 / 0.06), 0 14px 30px -14px rgb(41 34 23 / 0.28);
+}
+
+.dark {
+  --background: #16120d;
+  --foreground: #efe3cf;
+  --card: #211a13;
+  --card-foreground: #efe3cf;
+  --muted: #2c2319;
+  --muted-foreground: #a39680;
+  --border: #3a2f22;
+  --primary: #2dd4bf;
+  --primary-foreground: #06201b;
+  --accent: #fbbf24;
+  --accent-foreground: #2b1c00;
+  --destructive: #f87171;
+  --ring: #2dd4bf;
+  --glow: radial-gradient(1200px 600px at 50% -15%, rgb(45 212 191 / 0.09), transparent 60%),
+    radial-gradient(800px 500px at 100% 100%, rgb(251 191 36 / 0.05), transparent 60%);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-ring: var(--ring);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", monospace;
+  --font-display: var(--font-fraunces), Georgia, "Times New Roman", serif;
+  --shadow-card: var(--shadow-card);
+  --shadow-card-hover: var(--shadow-card-hover);
 }
 
 body {
-  background: var(--background);
+  background-color: var(--background);
+  background-image: var(--glow);
+  background-attachment: fixed;
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-fraunces), Georgia, "Times New Roman", serif;
+  letter-spacing: -0.015em;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--primary) 25%, transparent);
+}
+
+@utility btn-primary {
+  @apply inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50;
+}
+
+@utility btn-outline {
+  @apply inline-flex items-center justify-center gap-2 rounded-lg border border-primary/35 px-4 py-2 text-sm font-medium text-primary transition-colors hover:bg-primary/10;
+}
+
+@utility btn-ghost {
+  @apply inline-flex items-center gap-1 text-sm font-medium text-muted-foreground transition-colors hover:text-primary;
+}
+
+@utility btn-danger {
+  @apply inline-flex items-center gap-1 text-sm font-medium text-destructive transition-colors hover:underline;
+}
+
+@utility input-base {
+  @apply w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none transition placeholder:text-muted-foreground/70 focus:border-primary/60 focus:ring-2 focus:ring-ring/30;
+}
+
+@utility card-base {
+  @apply rounded-xl border border-border bg-card text-card-foreground shadow-card transition-shadow;
 }

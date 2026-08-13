@@ -9,8 +9,8 @@ export default function ProfilePage() {
   const { data: decks } = useFetch<Deck[]>("/api/decks");
   const { data: results } = useFetch<QuizResult[]>("/api/quiz-results");
 
-  if (status === "loading") return <p className="p-6 text-gray-500">Loading...</p>;
-  if (!session) return <p className="p-6 text-gray-500">Redirecting to login...</p>;
+  if (status === "loading") return <p className="p-6 text-muted-foreground">Loading...</p>;
+  if (!session) return <p className="p-6 text-muted-foreground">Redirecting to login...</p>;
 
   const lastResult = results?.[0];
   const avgPct = results?.length
@@ -20,51 +20,52 @@ export default function ProfilePage() {
     : null;
 
   return (
-    <div className="max-w-3xl mx-auto p-4 sm:p-6">
-      <h1 className="text-2xl font-bold mb-4">Profile</h1>
+    <div className="mx-auto max-w-3xl p-4 sm:p-6">
+      <h1 className="mb-5 text-3xl font-semibold">Profile</h1>
 
-      <div className="border rounded-lg p-6 mb-6 flex items-center justify-between">
+      <div className="card-base mb-6 flex items-center justify-between p-6">
         <div>
-          <p className="text-lg font-medium">{session.user.name}</p>
-          <p className="text-gray-500 text-sm">{session.user.email}</p>
+          <p className="font-display text-xl font-medium">{session.user.name}</p>
+          <p className="text-sm text-muted-foreground">{session.user.email}</p>
         </div>
         <span
-          className={`px-3 py-1 rounded-full text-xs font-medium ${
+          className={`rounded-full px-3 py-1 text-xs font-medium ${
             session.user.role === "admin"
-              ? "bg-blue-100 text-blue-700"
-              : "bg-gray-100 text-gray-600"
+              ? "bg-accent/15 text-accent"
+              : "bg-muted text-muted-foreground"
           }`}
         >
           {session.user.role === "admin" ? "Admin" : "User"}
         </span>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="border rounded-lg p-4 text-center">
-          <p className="text-2xl font-bold">{courses?.length ?? "–"}</p>
-          <p className="text-sm text-gray-500">Courses</p>
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <div className="card-base p-4 text-center">
+          <p className="font-display text-2xl font-semibold">{courses?.length ?? "–"}</p>
+          <p className="text-sm text-muted-foreground">Courses</p>
         </div>
-        <div className="border rounded-lg p-4 text-center">
-          <p className="text-2xl font-bold">{decks?.length ?? "–"}</p>
-          <p className="text-sm text-gray-500">Decks</p>
+        <div className="card-base p-4 text-center">
+          <p className="font-display text-2xl font-semibold">{decks?.length ?? "–"}</p>
+          <p className="text-sm text-muted-foreground">Decks</p>
         </div>
-        <div className="border rounded-lg p-4 text-center">
-          <p className="text-2xl font-bold">{results?.length ?? "–"}</p>
-          <p className="text-sm text-gray-500">Quizzes taken</p>
+        <div className="card-base p-4 text-center">
+          <p className="font-display text-2xl font-semibold">{results?.length ?? "–"}</p>
+          <p className="text-sm text-muted-foreground">Quizzes taken</p>
         </div>
-        <div className="border rounded-lg p-4 text-center">
-          <p className="text-2xl font-bold">{avgPct !== null ? `${avgPct}%` : "–"}</p>
-          <p className="text-sm text-gray-500">Avg score</p>
+        <div className="card-base p-4 text-center">
+          <p className="font-display text-2xl font-semibold text-primary">
+            {avgPct !== null ? `${avgPct}%` : "–"}
+          </p>
+          <p className="text-sm text-muted-foreground">Avg score</p>
         </div>
       </div>
 
       {lastResult && (
-        <div className="border rounded-lg p-4 mt-6">
-          <p className="text-sm text-gray-500 mb-1">Last quiz</p>
-          <p className="font-medium">
+        <div className="card-base mt-6 p-4">
+          <p className="mb-1 text-sm text-muted-foreground">Last quiz</p>
+          <p className="font-display text-lg font-medium">
             {lastResult.score} / {lastResult.total}
-            <span className="text-gray-500 text-sm font-normal">
-              {" "}
+            <span className="ml-2 text-sm font-normal text-muted-foreground">
               on {new Date(lastResult.created_at).toLocaleDateString()}
             </span>
           </p>

@@ -3,7 +3,7 @@ import ResultsContent from "./ResultsContent";
 
 export default function ResultsPage() {
   return (
-    <Suspense fallback={<p className="p-6 text-gray-500">Loading results...</p>}>
+    <Suspense fallback={<p className="p-6 text-muted-foreground">Loading results...</p>}>
       <ResultsContent />
     </Suspense>
   );
