@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
+import ThemeToggle from "./ThemeToggle";
 
 export default function Navbar() {
   const { data: session } = useSession();
@@ -11,13 +12,13 @@ export default function Navbar() {
   if (pathname === "/" || pathname === "/login" || pathname === "/signup") return null;
 
   const linkClass = (active: boolean) =>
-    `hover:text-blue-600 ${active ? "text-blue-600 font-medium" : "text-gray-700"}`;
+    `transition-colors ${active ? "font-medium text-primary" : "text-muted-foreground hover:text-foreground"}`;
 
   return (
-    <nav className="border-b bg-white">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 flex items-center justify-between h-14">
+    <nav className="sticky top-0 z-40 border-b border-border bg-background/85 backdrop-blur transition-colors">
+      <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4 sm:px-6">
         <div className="flex items-center gap-6">
-          <Link href="/dashboard" className="font-bold text-lg text-gray-900">
+          <Link href="/dashboard" className="font-display text-xl font-semibold text-primary">
             MemoryPlace
           </Link>
           <div className="flex gap-4 text-sm">
@@ -35,11 +36,9 @@ export default function Navbar() {
           </div>
         </div>
         <div className="flex items-center gap-3 text-sm">
-          <span className="text-gray-600">{session.user.name}</span>
-          <button
-            onClick={() => signOut({ callbackUrl: "/login" })}
-            className="text-red-600 hover:underline"
-          >
+          <ThemeToggle />
+          <span className="text-muted-foreground">{session.user.name}</span>
+          <button onClick={() => signOut({ callbackUrl: "/login" })} className="font-medium text-destructive hover:underline">
             Sign out
           </button>
         </div>

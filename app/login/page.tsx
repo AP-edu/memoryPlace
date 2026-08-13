@@ -1,4 +1,3 @@
-
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -25,31 +24,32 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="max-w-sm mx-auto p-6 mt-10">
-      <h1 className="text-2xl font-bold mb-4">Log In</h1>
-      {error && <p className="text-red-600 text-sm mb-3">{error}</p>}
-      <form onSubmit={handleSubmit} className="space-y-3">
-        <input
-          type="email"
-          placeholder="Email"
-          className="w-full border rounded-lg px-3 py-2"
-          value={form.email}
-          onChange={(e) => setForm({ ...form, email: e.target.value })}
-        />
-        <input
-          type="password"
-          placeholder="Password"
-          className="w-full border rounded-lg px-3 py-2"
-          value={form.password}
-          onChange={(e) => setForm({ ...form, password: e.target.value })}
-        />
-        <button className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700">
-          Log In
-        </button>
-      </form>
-      <p className="text-sm text-gray-600 mt-4 text-center">
+    <div className="mx-auto mt-12 max-w-sm px-4">
+      <div className="card-base p-6 sm:p-8">
+        <h1 className="mb-1 text-3xl font-semibold">Log In</h1>
+        <p className="mb-5 text-sm text-muted-foreground">Welcome back to the palace.</p>
+        {error && <p className="mb-3 text-sm text-destructive">{error}</p>}
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <input
+            type="email"
+            placeholder="Email"
+            className="input-base"
+            value={form.email}
+            onChange={(e) => setForm({ ...form, email: e.target.value })}
+          />
+          <input
+            type="password"
+            placeholder="Password"
+            className="input-base"
+            value={form.password}
+            onChange={(e) => setForm({ ...form, password: e.target.value })}
+          />
+          <button className="btn-primary w-full">Log In</button>
+        </form>
+      </div>
+      <p className="mt-5 text-center text-sm text-muted-foreground">
         Don&apos;t have an account?{" "}
-        <Link href="/signup" className="text-blue-600 hover:underline">
+        <Link href="/signup" className="font-medium text-primary hover:underline">
           Sign up
         </Link>
       </p>

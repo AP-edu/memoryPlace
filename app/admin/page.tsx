@@ -12,34 +12,37 @@ export default function AdminDashboard() {
     refetch();
   }
 
-  if (loading) return <p className="p-6">Loading...</p>;
-  if (error) return <p className="p-6 text-red-600">Failed to load courses: {error}</p>;
+  if (loading) return <p className="p-6 text-muted-foreground">Loading...</p>;
+  if (error) return <p className="p-6 text-destructive">Failed to load courses: {error}</p>;
 
   return (
-    <div className="max-w-4xl mx-auto p-4 sm:p-6">
-      <h1 className="text-2xl font-bold mb-4">Admin: All Courses</h1>
-      <table className="w-full border-collapse">
-        <thead>
-          <tr className="text-left border-b">
-            <th className="py-2">Title</th>
-            <th className="py-2">Owner</th>
-            <th className="py-2"></th>
-          </tr>
-        </thead>
-        <tbody>
-          {courses?.map((c) => (
-            <tr key={c.id} className="border-b">
-              <td className="py-2">{c.title}</td>
-              <td className="py-2 text-sm text-gray-500">{c.owner}</td>
-              <td className="py-2 text-right">
-                <button onClick={() => handleDelete(c.id)} className="text-red-600 text-sm hover:underline">
-                  Remove
-                </button>
-              </td>
+    <div className="mx-auto max-w-4xl p-4 sm:p-6">
+      <h1 className="mb-1 text-3xl font-semibold">All Courses</h1>
+      <p className="mb-5 text-sm text-muted-foreground">Admin view — every room in the palace.</p>
+      <div className="card-base overflow-x-auto p-2">
+        <table className="w-full border-collapse">
+          <thead>
+            <tr className="border-b border-border text-left text-sm text-muted-foreground">
+              <th className="py-2.5 pl-3 font-medium">Title</th>
+              <th className="py-2.5 font-medium">Owner</th>
+              <th className="py-2.5 pr-3 text-right font-medium"></th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {courses?.map((c) => (
+              <tr key={c.id} className="border-b border-border transition-colors last:border-0 hover:bg-muted/50">
+                <td className="py-2.5 pl-3">{c.title}</td>
+                <td className="py-2.5 text-sm text-muted-foreground">{c.owner}</td>
+                <td className="py-2.5 pr-3 text-right">
+                  <button onClick={() => handleDelete(c.id)} className="btn-danger !text-xs">
+                    Remove
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

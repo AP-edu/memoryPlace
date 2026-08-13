@@ -4,6 +4,28 @@ import { useParams, useRouter } from "next/navigation";
 import { useFetch } from "@/hooks/useFetch";
 import type { Deck, Flashcard } from "@/types/database";
 
+const ROMAN: [number, string][] = [
+  [50, "L"],
+  [40, "XL"],
+  [10, "X"],
+  [9, "IX"],
+  [5, "V"],
+  [4, "IV"],
+  [1, "I"],
+];
+
+function toRoman(n: number) {
+  let out = "";
+  let v = n;
+  for (const [k, s] of ROMAN) {
+    while (v >= k) {
+      out += s;
+      v -= k;
+    }
+  }
+  return out;
+}
+
 export default function QuizPage() {
   const { deckId } = useParams<{ deckId: string }>();
   const router = useRouter();
@@ -18,7 +40,7 @@ export default function QuizPage() {
   const [score, setScore] = useState(0);
 
   if (!deckId) return <p className="p-6">This quiz link is missing a deck id.</p>;
-  if (loading || loadingDeck) return <p className="p-6">Loading quiz...</p>;
+  if (loading || loadingDeck) return <p className="p-6 text-muted-foreground">Loading quiz...</p>;
 
   if (!deck) {
     return (
@@ -28,12 +50,12 @@ export default function QuizPage() {
     );
   }
 
-  if (error) return <p className="p-6 text-red-600">Failed to load quiz: {error}</p>;
+  if (error) return <p className="p-6 text-destructive">Failed to load quiz: {error}</p>;
 
   if (!cards?.length) {
     return (
-      <div className="max-w-lg mx-auto p-6 text-center">
-        <p className="text-sm text-gray-500 mb-2">{deck.title}</p>
+      <div className="mx-auto max-w-lg p-6 text-center">
+        <p className="mb-2 text-sm text-muted-foreground">{deck.title}</p>
         <p className="text-lg">This deck has no flashcards yet.</p>
       </div>
     );
@@ -66,28 +88,45 @@ export default function QuizPage() {
   }
 
   return (
-    <div className="max-w-lg mx-auto p-6 text-center">
-      <p className="text-sm text-gray-500 mb-2">{deck.title}</p>
-      <p className="text-sm text-gray-500 mb-2">
-        Card {index + 1} of {cards.length}
+    <div className="mx-auto max-w-lg p-4 sm:p-6">
+      <p className="mb-1 text-center text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
+        {deck.title}
       </p>
-      <div className="border rounded-xl p-8 mb-6 min-h-[150px] flex items-center justify-center">
-        <p className="text-lg">{showAnswer ? card.answer : card.question}</p>
-      </div>
-      {!showAnswer ? (
-        <button onClick={() => setShowAnswer(true)} className="bg-blue-600 text-white px-5 py-2 rounded-lg">
-          Show Answer
-        </button>
-      ) : (
-        <div className="flex gap-3 justify-center">
-          <button onClick={() => handleAnswer(false)} className="bg-red-500 text-white px-5 py-2 rounded-lg">
-            Got it wrong
-          </button>
-          <button onClick={() => handleAnswer(true)} className="bg-green-600 text-white px-5 py-2 rounded-lg">
-            Got it right
-          </button>
+      <p className="mb-5 text-center font-display text-lg text-accent">
+        Chamber {toRoman(index + 1)} of {toRoman(cards.length)}
+      </p>
+
+      <div className="card-base relative overflow-hidden p-10 text-center">
+        <div className="absolute inset-x-0 top-0 h-1.5 bg-linear-to-r from-primary via-accent to-primary" />
+        <div className="flex min-h-40 items-center justify-center">
+          <p className="text-xl font-medium leading-relaxed">
+            {showAnswer ? card.answer : card.question}
+          </p>
         </div>
-      )}
+      </div>
+
+      <div className="mt-6 flex justify-center">
+        {!showAnswer ? (
+          <button onClick={() => setShowAnswer(true)} className="btn-primary">
+            Show Answer
+          </button>
+        ) : (
+          <div className="flex gap-3">
+            <button
+              onClick={() => handleAnswer(false)}
+              className="rounded-lg bg-destructive px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-destructive/90"
+            >
+              Got it wrong
+            </button>
+            <button
+              onClick={() => handleAnswer(true)}
+              className="rounded-lg bg-green-600 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-green-700"
+            >
+              Got it right
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

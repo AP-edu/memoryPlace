@@ -1,18 +1,20 @@
-
 import Link from "next/link";
 
 export default function Home() {
   return (
-    <div className="max-w-2xl mx-auto p-6 mt-20 text-center">
-      <h1 className="text-4xl font-bold mb-3">Memory Palace Lite</h1>
-      <p className="text-gray-600 mb-8">
-        Organize your study material into courses, decks, and flashcards — then quiz yourself.
+    <div className="mx-auto max-w-2xl px-6 pb-24 pt-28 text-center">
+      <p className="mb-4 text-xs font-medium uppercase tracking-[0.25em] text-accent">
+        A memory palace for your studies
       </p>
-      <div className="flex gap-4 justify-center">
-        <Link href="/login" className="bg-blue-600 text-white px-5 py-2 rounded-lg hover:bg-blue-700">
+      <h1 className="text-5xl font-semibold leading-tight sm:text-6xl">MemoryPlace</h1>
+      <p className="mx-auto mb-10 mt-5 max-w-md text-muted-foreground">
+        Organize your study material into courses, decks, and flashcards — then quiz yourself in the palace.
+      </p>
+      <div className="flex justify-center gap-4">
+        <Link href="/login" className="btn-primary">
           Log In
         </Link>
-        <Link href="/signup" className="border border-blue-600 text-blue-600 px-5 py-2 rounded-lg hover:bg-blue-50">
+        <Link href="/signup" className="btn-outline">
           Sign Up
         </Link>
       </div>
