@@ -46,6 +46,11 @@ export default function LoginPage() {
           />
           <button className="btn-primary w-full">Log In</button>
         </form>
+        <p className="mt-3 text-center text-sm">
+          <Link href="/forgot-password" className="text-muted-foreground hover:text-foreground hover:underline">
+            Forgot password?
+          </Link>
+        </p>
       </div>
       <p className="mt-5 text-center text-sm text-muted-foreground">
         Don&apos;t have an account?{" "}

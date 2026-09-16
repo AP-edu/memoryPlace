@@ -42,6 +42,15 @@ export interface QuizResult {
   created_at: string;
 }
 
+export interface PasswordResetToken {
+  id: string;
+  user_id: string;
+  token_hash: string;
+  expires_at: string;
+  used_at: string | null;
+  created_at: string;
+}
+
 // Palace model (spatial rebuild). Palaces contain rooms, rooms contain loci,
 // cards attach to loci. Legacy courses/decks/flashcards/quiz_results remain.
 export type PalaceVisibility = "private" | "shared" | "public";
