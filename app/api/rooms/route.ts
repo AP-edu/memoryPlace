@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { title, palace_id, background } = await req.json();
+  const { title, palace_id, background, width, depth, height } = await req.json();
   if (!title || !palace_id) {
     return NextResponse.json({ error: "Title and palace_id required" }, { status: 400 });
   }
@@ -38,9 +38,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  const isPosNum = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n) && n > 0;
   const { data, error } = await supabase
     .from("rooms")
-    .insert({ title, palace_id, background: background ?? null, user_id: session.user.id })
+    .insert({
+      title,
+      palace_id,
+      background: background ?? null,
+      user_id: session.user.id,
+      width: isPosNum(width) ? width : 10,
+      depth: isPosNum(depth) ? depth : 8,
+      height: isPosNum(height) ? height : 3,
+    })
     .select()
     .single();
 
