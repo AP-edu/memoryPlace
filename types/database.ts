@@ -72,8 +72,15 @@ export interface Room {
   title: string;
   background: string | null;
   metadata: Record<string, unknown>;
+  // Rect geometry (v2). World y-up: room spans x in [0,width], z in [0,depth],
+  // y in [0,height]. See migration 20260916131701_palace_v2_geometry.sql.
+  width: number;
+  depth: number;
+  height: number;
   created_at: string;
 }
+
+export type WallFace = "north" | "south" | "east" | "west";
 
 export interface Locus {
   id: string;
@@ -84,7 +91,36 @@ export interface Locus {
   label: string;
   tags: string[];
   position: number;
+  // Wall anchoring (v2): wall_offset is 0..1 along the wall from its start
+  // corner; height is absolute world units. Legacy x/y/z remain for compat.
+  wall: WallFace | null;
+  wall_offset: number | null;
+  height: number | null;
   created_at: string;
+}
+
+export type OpeningKind = "door" | "archway";
+
+export interface Opening {
+  id: string;
+  room_id: string;
+  wall: WallFace;
+  wall_offset: number;
+  width: number;
+  kind: OpeningKind;
+  created_at: string;
+}
+
+export interface CardReview {
+  card_id: string;
+  user_id: string;
+  ease: number;
+  interval_days: number;
+  due_at: string;
+  last_grade: number | null;
+  reviews_count: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export type CardType = "basic" | "cloze" | "image" | "audio";
