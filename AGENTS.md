@@ -31,6 +31,8 @@ Order of delivery from the vision docs; each phase ends green on tsc + eslint +
 - E. Palace Overview becomes home; Summary/settings; PDF screens for
   Home/Courses/Profile/Stats absorbed in.
 - F. 3D walk mode (first-person, doors/archways, loom-at-locus to reveal card).
+  Shipped early as `/walk/[roomId]` (lib/walk.ts pure logic + R3F scene).
+  DONE.
 - G. Drop legacy courses/decks/flashcards tags + OAuth (Google real, Apple stub)
   + export/printable blueprint + onboarding (guided tour folded in here).
 
