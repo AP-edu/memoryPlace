@@ -25,6 +25,12 @@ export default function Navbar() {
             <Link href="/dashboard" className={linkClass(pathname.startsWith("/dashboard"))}>
               My Courses
             </Link>
+            <Link
+              href="/palaces"
+              className={linkClass(pathname.startsWith("/palaces") || pathname.startsWith("/rooms") || pathname.startsWith("/study"))}
+            >
+              My Palaces
+            </Link>
             <Link href="/profile" className={linkClass(pathname.startsWith("/profile"))}>
               Profile
             </Link>
