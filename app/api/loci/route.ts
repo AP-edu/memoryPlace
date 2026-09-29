@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   } else {
     // Bare list stays owner-scoped via parent rooms.
     const { data: rooms } = await supabase.from("rooms").select("id").eq("user_id", session.user.id);
-    const ids = (rooms ?? []).map((r) => r.id);
+    const ids = (rooms ?? []).map((r: { id: string }) => r.id);
     if (ids.length === 0) return NextResponse.json([]);
     query = query.in("room_id", ids);
   }
