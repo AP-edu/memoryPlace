@@ -38,7 +38,7 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
   const owner = await roomOwner(id);
   if (!owner || !canModify(session, owner)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const { label, x, y, z, tags, position } = await req.json();
+  const { label, x, y, z, tags, position, wall, wall_offset, height } = await req.json();
   const updates: Record<string, unknown> = {};
   if (label !== undefined) updates.label = label;
   if (x !== undefined) updates.x = x;
@@ -46,6 +46,9 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
   if (z !== undefined) updates.z = z;
   if (tags !== undefined) updates.tags = tags;
   if (position !== undefined) updates.position = position;
+  if (wall !== undefined) updates.wall = wall;
+  if (wall_offset !== undefined) updates.wall_offset = wall_offset;
+  if (height !== undefined) updates.height = height;
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
   }

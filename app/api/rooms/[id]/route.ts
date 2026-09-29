@@ -27,11 +27,14 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
   if (!room) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (!canModify(session, room.user_id)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const { title, background, metadata } = await req.json();
+  const { title, background, metadata, width, depth, height } = await req.json();
   const updates: Record<string, unknown> = {};
   if (title !== undefined) updates.title = title;
   if (background !== undefined) updates.background = background;
   if (metadata !== undefined) updates.metadata = metadata;
+  if (width !== undefined) updates.width = width;
+  if (depth !== undefined) updates.depth = depth;
+  if (height !== undefined) updates.height = height;
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
   }
