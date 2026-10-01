@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useFetch } from "@/hooks/useFetch";
 import type { Card, Locus, Opening, Room, WallFace } from "@/types/database";
 import { cardBack, cardFront } from "@/types/database";
-import { clamp01, wallLength, wallPoint } from "@/lib/geometry";
+import { clamp01, openingWidthM, wallPoint } from "@/lib/geometry";
 
 const THICK = 0.5;
 const SNAP_STEPS = [0, 0.25, 0.5, 0.75, 1];
@@ -30,8 +30,7 @@ function offsetOnWall(wall: WallFace, x: number, z: number, size: { width: numbe
 
 function openingArc(op: Opening, size: { width: number; depth: number }): string {
   const center = wallPoint(op.wall, op.wall_offset, size);
-  const len = wallLength(op.wall, size);
-  const half = Math.min((op.width * len) / 2, len / 2);
+  const half = openingWidthM(op, size) / 2;
   const bulge = Math.min(half, 1.2);
   switch (op.wall) {
     case "north":
@@ -150,9 +149,14 @@ export default function RoomPage() {
 
   function onCanvasClick(e: React.MouseEvent<SVGSVGElement>) {
     if (!size) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * size.width;
-    const z = ((e.clientY - rect.top) / rect.height) * size.depth;
+    // North (+z) is drawn at the TOP: svg y = depth - z. Use the CTM so
+    // letterboxing from preserveAspectRatio doesn't skew the hit position.
+    const svg = e.currentTarget;
+    const ctm = svg.getScreenCTM();
+    if (!ctm) return;
+    const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(ctm.inverse());
+    const x = pt.x;
+    const z = size.depth - pt.y;
     const wall = wallAt(size, x, z);
     if (!wall) return;
     startPlace(wall, snapOffset(offsetOnWall(wall, x, z, size)));
@@ -362,6 +366,8 @@ export default function RoomPage() {
           >
             <rect x={0} y={0} width={size.width} height={size.depth} rx={0.4} style={{ fill: "var(--card)" }} />
 
+            {/* Plan geometry is authored in world (x, z) and flipped so north (+z) is at the top. */}
+            <g transform={`matrix(1 0 0 -1 0 ${size.depth})`}>
             {/* Walls */}
             <rect x={0} y={0} width={size.width} height={THICK} style={{ fill: "var(--foreground)", opacity: 0.18 }} />
             <rect x={0} y={size.depth - THICK} width={size.width} height={THICK} style={{ fill: "var(--foreground)", opacity: 0.18 }} />
@@ -371,8 +377,7 @@ export default function RoomPage() {
             {/* Opening cutouts + arcs */}
             {(openings ?? []).map((op) => {
               const center = wallPoint(op.wall, op.wall_offset, size);
-              const len = wallLength(op.wall, size);
-              const half = Math.min((op.width * len) / 2, len / 2);
+              const half = openingWidthM(op, size) / 2;
               const isHorizontal = op.wall === "north" || op.wall === "south";
               const holeW = isHorizontal ? half * 2 : THICK + 0.2;
               const holeH = isHorizontal ? THICK + 0.2 : half * 2;
@@ -399,7 +404,21 @@ export default function RoomPage() {
               );
             })}
 
-            {/* Wall labels */}
+            {/* Draft/active preview */}
+            {mode !== "idle" && (
+              <circle
+                cx={wallPoint(geoWall, geoOffset, size).x}
+                cy={wallPoint(geoWall, geoOffset, size).z}
+                r={0.55}
+                fill="none"
+                stroke="var(--primary)"
+                strokeWidth={0.18}
+                strokeDasharray="0.3 0.2"
+              />
+            )}
+            </g>
+
+            {/* Wall labels (screen space: north at top) */}
             <text x={size.width / 2} y={THICK + 0.8} textAnchor="middle" style={{ fill: "var(--muted-foreground)" }} fontSize={0.7}>
               NORTH
             </text>
@@ -413,19 +432,6 @@ export default function RoomPage() {
               EAST
             </text>
 
-            {/* Draft/active preview */}
-            {mode !== "idle" && (
-              <circle
-                cx={wallPoint(geoWall, geoOffset, size).x}
-                cy={wallPoint(geoWall, geoOffset, size).z}
-                r={0.55}
-                fill="none"
-                stroke="var(--primary)"
-                strokeWidth={0.18}
-                strokeDasharray="0.3 0.2"
-              />
-            )}
-
             {/* Loci */}
             {(loci ?? []).map((locus) => {
               const p = wallPoint(locus.wall ?? "north", locus.wall_offset ?? 0, size);
@@ -437,7 +443,7 @@ export default function RoomPage() {
                     e.stopPropagation();
                     selectLocus(locus);
                   }}
-                  transform={`translate(${p.x} ${p.z})`}
+                  transform={`translate(${p.x} ${size.depth - p.z})`}
                   className="cursor-pointer"
                   aria-label={`Locus ${locus.label}`}
                   role="button"

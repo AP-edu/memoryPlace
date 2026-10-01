@@ -1,4 +1,4 @@
-import { clamp01, locusWorldPos, wallLength } from "./geometry";
+import { clamp01, locusWorldPos, openingHalfFraction, wallLength } from "./geometry";
 import type { Locus, Opening, Room, WallFace } from "@/types/database";
 
 // First-person walk logic (Phase F). All pure functions — no DOM, no three —
@@ -64,11 +64,10 @@ export function wallSpans(
   wall: WallFace,
   openings: Opening[]
 ): Array<{ from: number; to: number }> {
-  const len = wallLength(wall, size);
   const gaps = openings
     .filter((o) => o.wall === wall)
     .map((o) => {
-      const half = len > 0 ? Math.min(((o.width ?? 0.2) * len) / 2, len / 2) / len : 0;
+      const half = openingHalfFraction(o, size);
       const c = clamp01(o.wall_offset ?? 0.5);
       return { from: Math.max(0, c - half), to: Math.min(1, c + half) };
     })
@@ -95,7 +94,7 @@ export function openingAt(
   const margin = len > 0 ? marginWorld / len : 0;
   for (const o of openings) {
     if (o.wall !== wall) continue;
-    const half = (len > 0 ? Math.min(((o.width ?? 0.2) * len) / 2, len / 2) / len : 0) + margin;
+    const half = openingHalfFraction(o, size) + margin;
     const c = clamp01(o.wall_offset ?? 0.5);
     if (offset >= c - half && offset <= c + half) return o;
   }

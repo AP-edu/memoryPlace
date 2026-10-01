@@ -58,3 +58,30 @@ export function locusWorldPos(locus: Pick<Locus, "wall" | "wall_offset" | "heigh
   const p = wallPoint(wall, offset, room);
   return { x: p.x, y: height, z: p.z, wall, wallOffset: offset };
 }
+// ---------------------------------------------------------------- opening widths
+// width_m (metres) is authoritative; legacy rows only have `width` as a
+// fraction of the wall length. Every consumer (walk mode, 3D preview, room
+// editor, grid editor) goes through these helpers so they agree on units.
+export const DEFAULT_OPENING_WIDTH_M = { door: 0.9, archway: 1.2 } as const;
+
+export function openingWidthM(
+  op: { wall: WallFace; width?: number | null; width_m?: number | null },
+  size: { width: number; depth: number }
+): number {
+  const len = wallLength(op.wall, size);
+  const raw =
+    typeof op.width_m === "number" && Number.isFinite(op.width_m) && op.width_m > 0
+      ? op.width_m
+      : (typeof op.width === "number" && Number.isFinite(op.width) && op.width > 0 ? op.width : 0.2) * len;
+  return Math.min(raw, len);
+}
+
+/** Half the opening width as a fraction of its wall (0..0.5). */
+export function openingHalfFraction(
+  op: { wall: WallFace; width?: number | null; width_m?: number | null },
+  size: { width: number; depth: number }
+): number {
+  const len = wallLength(op.wall, size);
+  if (len <= 0) return 0;
+  return openingWidthM(op, size) / len / 2;
+}

@@ -5,6 +5,7 @@ import { OrbitControls, PointerLockControls } from "@react-three/drei";
 import * as THREE from "three";
 import { useFetch } from "@/hooks/useFetch";
 import type { Locus, Opening, Room } from "@/types/database";
+import { openingWidthM } from "@/lib/geometry";
 
 // R3F crash notes:
 // - <Canvas> owns renderer/scene/camera. Everything inside is three.js, declaratively.
@@ -72,7 +73,8 @@ function WallWithGaps({
   if (!o) return <SingleWall room={room} wall={wall} color={color} />;
 
   const gapCenter = o.wall_offset * wallLen;
-  const gapW = Math.max(0.8, o.width * 6);
+  // Same unit as walk mode / room editor: absolute metres via openingWidthM.
+  const gapW = openingWidthM(o, room);
   const seg1Len = Math.max(0.1, gapCenter - gapW / 2);
   const seg2Len = Math.max(0.1, wallLen - (gapCenter + gapW / 2));
   const seg1Center = seg1Len / 2;
