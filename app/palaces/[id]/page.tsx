@@ -299,6 +299,9 @@ export default function PalacePage() {
         <button onClick={savePalace} disabled={!palaceDirty} className="btn-primary">
           Save palace
         </button>
+        <Link href={`/study/palace/${id}`} className="btn-outline">
+          Study due
+        </Link>
       </div>
       {palaceErr && <p className="mt-2 text-sm text-destructive">{palaceErr}</p>}
 
