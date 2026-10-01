@@ -25,19 +25,28 @@ Order of delivery from the vision docs; each phase ends green on tsc + eslint +
   `/spike-3d/[roomId]` spike validating the geometry. DONE.
 - B. Blueprint builder (2D): Palace Overview 2D Blueprint + Room Editor +
   Loci Placement Panel. No legacy dependencies.
-- C. SRS + due engine (card_reviews), resurfacing into study/quiz.
+- C. SRS + due engine (card_reviews), resurfacing into study/quiz. DONE.
 - D. Spatial quiz (walk-and-answer at loci) replaces deck quiz. MCQ is hybrid:
   stored options when authored, else auto-derive distractors from sibling cards.
 - E. Palace Overview becomes home; Summary/settings; PDF screens for
   Home/Courses/Profile/Stats absorbed in.
 - F. 3D walk mode (first-person, doors/archways, loom-at-locus to reveal card).
+  Shipped early as `/walk/[roomId]` (lib/walk.ts pure logic + R3F scene).
+  DONE.
 - G. Drop legacy courses/decks/flashcards tags + OAuth (Google real, Apple stub)
   + export/printable blueprint + onboarding (guided tour folded in here).
 
 ## Geometry convention (Phase A, source of truth for B/F)
 
 World y-up. Room spans x∈[0,width], z∈[0,depth], y∈[0,height]. Top-down floorplan:
-x→right, z→down. Walls: north (z=depth), south (z=0), east (x=width), west (x=0).
+x→right, **north (+z) drawn at the TOP** of every 2D view (screen y = −z; changed
+in feat/grid-editor — the room editor previously drew z downward).
+Walls: north (z=depth), south (z=0), east (x=width), west (x=0).
+Levels (grid editor): a room sits on `level_id` with its min corner at
+(`pos_x`, `pos_z`) in metres. Openings: `width_m` (metres) is authoritative,
+legacy `width` is a fraction of the wall — always read via
+`openingWidthM()` in `lib/geometry.ts`. Linked doors between adjacent rooms
+are a pair of openings pointing at each other via `target_room_id`.
 Loci anchor on `wall` + `wall_offset` (0..1 relative, resizes don't orphan) +
 `height` (absolute units, default 1.5). `loci.position` is the single canonical
 traversal-order authority.

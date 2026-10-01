@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { supabase } from "@/lib/supabase";
+import { defaultLevelId, placementUpdates } from "@/lib/roomPlacement";
+import { isPosNum, MAX_ROOM_SIZE } from "@/lib/validate";
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -23,7 +25,9 @@ export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { title, palace_id, background } = await req.json();
+  const body = await req.json().catch(() => null);
+  if (!body || typeof body !== "object") return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+  const { title, palace_id, background, width, depth, height } = body as Record<string, unknown>;
   if (!title || !palace_id) {
     return NextResponse.json({ error: "Title and palace_id required" }, { status: 400 });
   }
@@ -38,9 +42,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  for (const n of [width, depth, height]) {
+    if (n !== undefined && (!isPosNum(n) || n > MAX_ROOM_SIZE)) {
+      return NextResponse.json({ error: "Dimensions must be positive numbers" }, { status: 400 });
+    }
+  }
+  const placement = await placementUpdates(body as Record<string, unknown>, palace.id);
+  if ("error" in placement) return NextResponse.json({ error: placement.error }, { status: 400 });
+  if (placement.updates.level_id === undefined) placement.updates.level_id = await defaultLevelId(palace.id);
+
   const { data, error } = await supabase
     .from("rooms")
-    .insert({ title, palace_id, background: background ?? null, user_id: session.user.id })
+    .insert({
+      title,
+      palace_id,
+      background: background ?? null,
+      user_id: session.user.id,
+      width: isPosNum(width) ? width : 10,
+      depth: isPosNum(depth) ? depth : 8,
+      height: isPosNum(height) ? height : 3,
+      ...placement.updates,
+    })
     .select()
     .single();
 

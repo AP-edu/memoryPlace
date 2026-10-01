@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
   if (roomId) {
     const { data: loci, error: lociError } = await supabase.from("loci").select("id").eq("room_id", roomId);
     if (lociError) return NextResponse.json({ error: lociError.message }, { status: 500 });
-    const ids = (loci ?? []).map((l) => l.id);
+    const ids = (loci ?? []).map((l: { id: string }) => l.id);
     if (ids.length === 0) return NextResponse.json([]);
     const { data, error } = await supabase
       .from("cards")

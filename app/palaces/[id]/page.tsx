@@ -1,84 +1,158 @@
 "use client";
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useFetch } from "@/hooks/useFetch";
-import type { Palace, Room } from "@/types/database";
+import type { Level, Opening, Palace, Room } from "@/types/database";
+import { Room3DPreview } from "@/components/palace/Room3DPreview";
+import { GridEditor } from "@/components/palace-editor/GridEditor";
+import { httpBackend } from "@/components/palace-editor/backend";
 
+// Palace Overview: the 2D grid editor is the main builder (rooms, levels,
+// doors). Loci and cards are still edited per room at /rooms/[id].
 export default function PalacePage() {
   const { id } = useParams<{ id: string }>();
-  const { data: palace } = useFetch<Palace>(id ? `/api/palaces/${id}` : null);
-  const { data: rooms, loading, error, refetch } = useFetch<Room[]>(
-    id ? `/api/rooms?palace=${id}` : null
+  const { data: palace, refetch: refetchPalace } = useFetch<Palace>(id ? `/api/palaces/${id}` : null);
+  const { data: levels, loading: loadingLevels, error: levelsError } = useFetch<Level[]>(id ? `/api/levels?palace=${id}` : null);
+  const { data: rooms, loading: loadingRooms, error: roomsError } = useFetch<Room[]>(id ? `/api/rooms?palace=${id}` : null);
+  const { data: openings, loading: loadingOpenings, error: openingsError } = useFetch<Opening[]>(
+    id ? `/api/openings?palace=${id}` : null
   );
 
-  const [title, setTitle] = useState("");
-  const [formError, setFormError] = useState<string | null>(null);
+  const [palaceTitle, setPalaceTitle] = useState("");
+  const [palaceDesc, setPalaceDesc] = useState("");
+  const seeded = useRef(false);
+  const palaceDirty = palace ? palaceTitle !== palace.title || palaceDesc !== (palace.description ?? "") : false;
+  const [palaceErr, setPalaceErr] = useState<string | null>(null);
+  const [liveRooms, setLiveRooms] = useState<Room[]>([]);
+  const [liveLevels, setLiveLevels] = useState<Level[]>([]);
+  const [previewRoomId, setPreviewRoomId] = useState<string | null>(null);
 
-  async function handleCreate(e: React.FormEvent) {
-    e.preventDefault();
-    if (!title.trim()) return setFormError("Title required");
-    const res = await fetch("/api/rooms", {
-      method: "POST",
+  useEffect(() => {
+    if (palace && !seeded.current) {
+      seeded.current = true;
+      setPalaceTitle(palace.title ?? "");
+      setPalaceDesc(palace.description ?? "");
+    }
+  }, [palace]);
+
+  const onRoomsChange = useCallback((rs: Room[], ls: Level[]) => {
+    setLiveRooms(rs);
+    setLiveLevels(ls);
+  }, []);
+
+  async function savePalace() {
+    const res = await fetch(`/api/palaces/${id}`, {
+      method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title, palace_id: id }),
+      body: JSON.stringify({ title: palaceTitle.trim() || palace?.title, description: palaceDesc.trim() || null }),
     });
-    if (!res.ok) return setFormError("Failed to create room");
-    setFormError(null);
-    setTitle("");
-    refetch();
-  }
-
-  async function handleDelete(roomId: string) {
-    if (!confirm("Delete this room, its loci, and its cards?")) return;
-    const res = await fetch(`/api/rooms/${roomId}`, { method: "DELETE" });
-    if (!res.ok) return setFormError("Failed to delete room");
-    refetch();
+    if (!res.ok) return setPalaceErr("Failed to save palace.");
+    setPalaceErr(null);
+    seeded.current = false;
+    refetchPalace();
   }
 
   if (!id) return <p className="p-6">This palace link is missing an id.</p>;
-  if (loading) return <p className="p-6 text-muted-foreground">Loading rooms...</p>;
-  if (error) return <p className="p-6 text-destructive">Failed to load rooms: {error}</p>;
+  const loadError = levelsError ?? roomsError ?? openingsError;
+  if (loadError) return <p className="p-6 text-destructive">Failed to load palace: {loadError}</p>;
+  const ready = palace && levels && rooms && openings && !loadingLevels && !loadingRooms && !loadingOpenings;
+
+  const previewRoom = liveRooms.find((r) => r.id === previewRoomId && !r.id.startsWith("tmp-")) ?? null;
+  const levelName = (r: Room) => liveLevels.find((l) => l.id === r.level_id)?.name ?? liveLevels[0]?.name ?? "";
 
   return (
-    <div className="mx-auto max-w-3xl p-4 sm:p-6">
+    <div className="mx-auto max-w-7xl p-4 sm:p-6">
       <Link href="/palaces" className="btn-ghost">
         {"\u2190 Back to palaces"}
       </Link>
-      <h1 className="mb-1 mt-3 text-3xl font-semibold">{palace?.title ?? "Palace"} Rooms</h1>
-      <p className="mb-5 text-sm text-muted-foreground">Each room is a chamber — place loci inside, then walk them.</p>
 
-      <form onSubmit={handleCreate} className="mb-4 flex gap-2">
-        <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="New room title"
-          className="input-base flex-1"
-        />
-        <button className="btn-primary">Add</button>
-      </form>
-      {formError && <p className="mb-4 text-sm text-destructive">{formError}</p>}
-
-      {rooms?.length === 0 && <p className="text-muted-foreground">No rooms yet — add one above.</p>}
-
-      <div className="space-y-3">
-        {rooms?.map((room) => (
-          <div key={room.id} className="card-base flex items-center justify-between p-4">
-            <span className="font-display text-lg font-medium">{room.title}</span>
-            <div className="flex items-center gap-4 text-sm">
-              <Link href={`/study/${room.id}`} className="btn-primary `px-3` `py-1.5`">
-                Study
-              </Link>
-              <Link href={`/rooms/${room.id}`} className="btn-ghost">
-                Design loci
-              </Link>
-              <button onClick={() => handleDelete(room.id)} className="btn-danger">
-                Delete
-              </button>
-            </div>
-          </div>
-        ))}
+      <div className="mt-3 flex flex-wrap gap-2">
+        <input value={palaceTitle} onChange={(e) => setPalaceTitle(e.target.value)} placeholder="Palace title" className="input-base max-w-72" aria-label="Palace title" />
+        <input value={palaceDesc} onChange={(e) => setPalaceDesc(e.target.value)} placeholder="Description (optional)" className="input-base max-w-80" aria-label="Palace description" />
+        <button onClick={savePalace} disabled={!palaceDirty} className="btn-primary">
+          Save palace
+        </button>
+        <Link href={`/study/palace/${id}`} className="btn-outline">
+          Study due
+        </Link>
       </div>
+      {palaceErr && <p className="mt-2 text-sm text-destructive">{palaceErr}</p>}
+
+      <h1 className="mb-1 mt-6 text-3xl font-semibold">{palace?.title ?? "Palace"} — Blueprint</h1>
+      <p className="mb-4 text-sm text-muted-foreground">
+        Draw rooms on the grid (metres, north up), stack levels, and place doors on shared walls. Open a room to place loci and
+        cards.
+      </p>
+
+      {ready ? (
+        <GridEditor
+          palace={palace}
+          initialLevels={levels}
+          initialRooms={rooms}
+          initialOpenings={openings}
+          backend={httpBackend}
+          onRoomsChange={onRoomsChange}
+          onPreviewRoom={setPreviewRoomId}
+        />
+      ) : (
+        <p className="text-muted-foreground">Loading blueprint…</p>
+      )}
+
+      {previewRoom && (
+        <div className="card-base mt-6 p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-xl font-semibold">3D preview — {previewRoom.title}</h2>
+            <button onClick={() => setPreviewRoomId(null)} className="btn-ghost">
+              Close
+            </button>
+          </div>
+          <Room3DPreview room={previewRoom} />
+          <div className="mt-3 flex gap-3 text-sm">
+            <Link href={`/walk/${previewRoom.id}`} className="btn-primary px-3 py-1.5">
+              Walk this room →
+            </Link>
+            <Link href={`/spike-3d/${previewRoom.id}`} className="btn-ghost">
+              Open 3D spike
+            </Link>
+            <Link href={`/rooms/${previewRoom.id}`} className="btn-ghost">
+              Loci &amp; cards
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {liveRooms.length > 0 && (
+        <>
+          <h2 className="mb-3 mt-8 text-xl font-semibold">Rooms</h2>
+          <ul className="divide-y divide-border rounded-lg border border-border">
+            {liveRooms
+              .filter((r) => !r.id.startsWith("tmp-"))
+              .map((r) => (
+                <li key={r.id} className="flex flex-wrap items-center gap-3 px-4 py-2 text-sm">
+                  <span className="font-medium">{r.title}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {levelName(r)} · {r.width} × {r.depth} × {r.height} m
+                  </span>
+                  <span className="ml-auto flex gap-2">
+                    <Link href={`/rooms/${r.id}`} className="btn-ghost">
+                      Loci &amp; cards
+                    </Link>
+                    <Link href={`/study/${r.id}`} className="btn-ghost">
+                      Study
+                    </Link>
+                    <Link href={`/walk/${r.id}`} className="btn-ghost">
+                      Walk
+                    </Link>
+                    <button onClick={() => setPreviewRoomId(r.id)} className="btn-ghost">
+                      3D
+                    </button>
+                  </span>
+                </li>
+              ))}
+          </ul>
+        </>
+      )}
     </div>
   );
 }

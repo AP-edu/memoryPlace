@@ -1,6 +1,7 @@
 import { withAuth } from "next-auth/middleware";
 
 export default withAuth({
+  pages: { signIn: "/login" },
   callbacks: {
     authorized: ({ token, req }) => {
       const path = req.nextUrl.pathname;
@@ -11,5 +12,5 @@ export default withAuth({
 });
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/admin/:path*", "/quiz/:path*", "/results/:path*", "/profile/:path*", "/palaces/:path*", "/rooms/:path*", "/study/:path*", "/spike-3d/:path*"],
+  matcher: ["/dashboard/:path*", "/admin/:path*", "/quiz/:path*", "/results/:path*", "/profile/:path*", "/palaces/:path*", "/rooms/:path*", "/study/:path*", "/spike-3d/:path*", "/walk/:path*"],
 };

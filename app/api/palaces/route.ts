@@ -41,5 +41,12 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Every palace starts with a ground floor for the grid editor (best effort).
+  const { error: levelError } = await supabase
+    .from("levels")
+    .insert({ palace_id: data.id, idx: 0, name: "Ground", elevation: 0, default_height: 3 });
+  if (levelError) console.error("palaces POST ground level", levelError);
+
   return NextResponse.json(data, { status: 201 });
 }
