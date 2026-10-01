@@ -298,7 +298,7 @@ export interface LinkableOpening {
 }
 
 /** The mirror opening of `op` in its target room (opposite wall, pointing back), nearest by offset. */
-export function findPartner<T extends LinkableOpening>(op: T, openings: T[]): T | null {
+export function findPartner<T extends Omit<LinkableOpening, "widthM">>(op: T, openings: T[]): T | null {
   if (!op.target_room_id) return null;
   let best: T | null = null;
   let bestDist = Infinity;
