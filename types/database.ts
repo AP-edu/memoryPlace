@@ -62,6 +62,21 @@ export interface Palace {
   description: string | null;
   theme: Record<string, unknown>;
   visibility: PalaceVisibility;
+  // Grid editor (migration 20261001160000): snap step in metres; unit is always "m".
+  grid_snap: number;
+  unit: "m";
+  created_at: string;
+}
+
+// A floor of a palace. Rooms sit on a level at (pos_x, pos_z); levels stack
+// by `idx` (0 = ground) and `elevation` (metres).
+export interface Level {
+  id: string;
+  palace_id: string;
+  idx: number;
+  name: string;
+  elevation: number;
+  default_height: number;
   created_at: string;
 }
 
@@ -77,6 +92,14 @@ export interface Room {
   width: number;
   depth: number;
   height: number;
+  // Placement on the level grid (metres). (pos_x, pos_z) is the room's min
+  // corner; north = +z is drawn at the top of every 2D view.
+  level_id: string | null;
+  pos_x: number;
+  pos_z: number;
+  rotation: 0 | 90 | 180 | 270;
+  // Reserved for future polygon rooms (room-local {x,z} vertices). Unused in v1.
+  outline: Array<{ x: number; z: number }> | null;
   created_at: string;
 }
 
@@ -106,8 +129,14 @@ export interface Opening {
   room_id: string;
   wall: WallFace;
   wall_offset: number;
+  // Legacy: width as a fraction (0..1) of the wall length when written.
   width: number;
+  // Authoritative absolute width in metres (null on rows written before the
+  // grid-editor migration; use openingWidthM() from lib/geometry.ts).
+  width_m: number | null;
   kind: OpeningKind;
+  // Room on the other side of a shared wall (doors between adjacent rooms).
+  target_room_id: string | null;
   created_at: string;
 }
 
