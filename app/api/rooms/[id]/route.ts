@@ -32,9 +32,19 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
   if (title !== undefined) updates.title = title;
   if (background !== undefined) updates.background = background;
   if (metadata !== undefined) updates.metadata = metadata;
-  if (width !== undefined) updates.width = width;
-  if (depth !== undefined) updates.depth = depth;
-  if (height !== undefined) updates.height = height;
+  const isPosNum = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n) && n > 0;
+  if (width !== undefined) {
+    if (!isPosNum(width)) return NextResponse.json({ error: "width must be a positive number" }, { status: 400 });
+    updates.width = width;
+  }
+  if (depth !== undefined) {
+    if (!isPosNum(depth)) return NextResponse.json({ error: "depth must be a positive number" }, { status: 400 });
+    updates.depth = depth;
+  }
+  if (height !== undefined) {
+    if (!isPosNum(height)) return NextResponse.json({ error: "height must be a positive number" }, { status: 400 });
+    updates.height = height;
+  }
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
   }

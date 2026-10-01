@@ -38,6 +38,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  const isPosNum = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n) && n > 0;
   const { data, error } = await supabase
     .from("rooms")
     .insert({
@@ -45,9 +46,9 @@ export async function POST(req: NextRequest) {
       palace_id,
       background: background ?? null,
       user_id: session.user.id,
-      width: typeof width === "number" ? width : 10,
-      depth: typeof depth === "number" ? depth : 8,
-      height: typeof height === "number" ? height : 3,
+      width: isPosNum(width) ? width : 10,
+      depth: isPosNum(depth) ? depth : 8,
+      height: isPosNum(height) ? height : 3,
     })
     .select()
     .single();
