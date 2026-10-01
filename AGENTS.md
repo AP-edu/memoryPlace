@@ -39,7 +39,14 @@ Order of delivery from the vision docs; each phase ends green on tsc + eslint +
 ## Geometry convention (Phase A, source of truth for B/F)
 
 World y-up. Room spans x∈[0,width], z∈[0,depth], y∈[0,height]. Top-down floorplan:
-x→right, z→down. Walls: north (z=depth), south (z=0), east (x=width), west (x=0).
+x→right, **north (+z) drawn at the TOP** of every 2D view (screen y = −z; changed
+in feat/grid-editor — the room editor previously drew z downward).
+Walls: north (z=depth), south (z=0), east (x=width), west (x=0).
+Levels (grid editor): a room sits on `level_id` with its min corner at
+(`pos_x`, `pos_z`) in metres. Openings: `width_m` (metres) is authoritative,
+legacy `width` is a fraction of the wall — always read via
+`openingWidthM()` in `lib/geometry.ts`. Linked doors between adjacent rooms
+are a pair of openings pointing at each other via `target_room_id`.
 Loci anchor on `wall` + `wall_offset` (0..1 relative, resizes don't orphan) +
 `height` (absolute units, default 1.5). `loci.position` is the single canonical
 traversal-order authority.

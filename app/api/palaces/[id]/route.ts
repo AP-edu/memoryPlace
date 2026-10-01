@@ -27,7 +27,11 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
   if (!palace) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (!canModify(session, palace.user_id)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const { title, description, theme, visibility } = await req.json();
+  const { title, description, theme, visibility, grid_snap, unit } = await req.json();
+  if (grid_snap !== undefined && !(typeof grid_snap === "number" && Number.isFinite(grid_snap) && grid_snap > 0 && grid_snap <= 10)) {
+    return NextResponse.json({ error: "Invalid grid_snap" }, { status: 400 });
+  }
+  if (unit !== undefined && unit !== "m") return NextResponse.json({ error: "Invalid unit" }, { status: 400 });
   if (visibility !== undefined && !["private", "shared", "public"].includes(visibility)) {
     return NextResponse.json({ error: "Invalid visibility" }, { status: 400 });
   }
@@ -36,6 +40,8 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
   if (description !== undefined) updates.description = description;
   if (theme !== undefined) updates.theme = theme;
   if (visibility !== undefined) updates.visibility = visibility;
+  if (grid_snap !== undefined) updates.grid_snap = grid_snap;
+  if (unit !== undefined) updates.unit = unit;
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
   }
