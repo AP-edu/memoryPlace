@@ -142,12 +142,24 @@ export function GridEditor({
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
+    let fitted = false;
+    const first = [...initialLevels].sort(byIdx)[0]?.id ?? null;
+    const firstRooms = initialRooms.filter((r) => (r.level_id ?? first) === first);
     const ro = new ResizeObserver((entries) => {
       const box = entries[0]?.contentRect;
-      if (box && box.width > 0 && box.height > 0) setSize({ w: Math.round(box.width), h: Math.round(box.height) });
+      if (!box || box.width <= 0 || box.height <= 0) return;
+      const w = Math.round(box.width);
+      const h = Math.round(box.height);
+      setSize({ w, h });
+      // Fit the initial level once the real canvas size is known.
+      if (!fitted) {
+        fitted = true;
+        setView(fitView(firstRooms, w, h));
+      }
     });
     ro.observe(el);
     return () => ro.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- initial fit only
   }, []);
 
   useEffect(() => {
@@ -698,6 +710,8 @@ export function GridEditor({
 
   function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
     if ((e.target as HTMLElement).closest("input,textarea,select")) return;
+    // Let Enter/Space activate focused buttons and links normally.
+    if ((e.key === "Enter" || e.key === " ") && (e.target as HTMLElement).closest("button,a")) return;
     const key = e.key;
     if (key === "Escape") {
       e.preventDefault();
@@ -817,7 +831,7 @@ export function GridEditor({
   }
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_290px]">
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_290px]" onKeyDown={onKeyDown}>
       <div className="min-w-0">
         <div className="mb-2 flex flex-wrap items-center gap-2">
           {toolBtn("select", "Select", "Select / move / resize (V)")}
@@ -874,7 +888,6 @@ export function GridEditor({
         <div
           ref={containerRef}
           tabIndex={0}
-          onKeyDown={onKeyDown}
           className="relative h-[560px] overflow-hidden rounded-lg border border-border bg-background outline-none focus-visible:ring-2 focus-visible:ring-ring"
           aria-label="Palace grid editor. North is up. Arrow keys nudge, Delete removes, Escape cancels."
         >
