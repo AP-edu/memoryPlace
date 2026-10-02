@@ -166,7 +166,7 @@ export function RoomShell({
                       {/* door leaf, hinged at one jamb and swung open into the room */}
                       <mesh position={at(-w / 2 + J + 0.02, WALL_THICK / 2 + (w - 2 * J) / 2, (top - J) / 2)} raycast={noRaycast}>
                         <boxGeometry args={box(0.04, top - J - 0.02, w - 2 * J)} />
-                        <meshStandardMaterial color={colors.door} roughness={0.7} transparent opacity={0.85} />
+                        <meshStandardMaterial color={colors.door} roughness={0.7} />
                       </mesh>
                     </>
                   )}
@@ -195,8 +195,11 @@ export function LocusMarkers({
   draggingId,
   onMarkerDown,
   onMarkerClick,
+  cardCounts,
 }: {
   room: Room;
+  /** Flashcards per locus id: drawn as a count badge and a small card stack beside the marker. */
+  cardCounts?: Record<string, number>;
   loci: Locus[];
   colors: SceneColors;
   selectedId?: string | null;
@@ -213,7 +216,9 @@ export function LocusMarkers({
         const p = locusWorldPos(l, room);
         const n = inwardNormal(p.wall);
         // Float markers slightly off the wall so they never z-fight with it.
-        return { locus: l, world: { x: p.x + n.x * 0.18, y: p.y, z: p.z + n.z * 0.18 } };
+        // Yaw that turns a plane's +Z (scene) to face into the room.
+        const yaw = Math.atan2(n.x, -n.z);
+        return { locus: l, yaw, world: { x: p.x + n.x * 0.18, y: p.y, z: p.z + n.z * 0.18 } };
       }),
     [ordered, room]
   );
@@ -232,9 +237,10 @@ export function LocusMarkers({
           raycast={noRaycast}
         />
       )}
-      {points.map(({ locus, world }, i) => {
+      {points.map(({ locus, world, yaw }, i) => {
         const active = locus.id === selectedId;
         const color = active ? colors.locusActive : colors.locus;
+        const count = cardCounts?.[locus.id] ?? 0;
         return (
           <group key={locus.id} position={toScene(world)}>
             <mesh
@@ -245,6 +251,7 @@ export function LocusMarkers({
               <sphereGeometry args={[active ? 0.2 : 0.16, 24, 24]} />
               <meshStandardMaterial color={color} emissive={color} emissiveIntensity={active ? 0.7 : 0.35} />
             </mesh>
+            {count > 0 && <CardStack count={count} yaw={yaw} colors={colors} />}
             {showLabels && (
               <Html center zIndexRange={[20, 0]} style={{ pointerEvents: "none" }} position={[0, 0.42, 0]}>
                 <div
@@ -254,12 +261,40 @@ export function LocusMarkers({
                 >
                   {i + 1}
                   {locus.label ? ` · ${locus.label}` : ""}
+                  {cardCounts && (
+                    <span
+                      className={`ml-1.5 inline-block min-w-[1.25rem] rounded-full px-1 text-center text-[10px] leading-4 ${count ? "bg-background text-foreground" : "bg-background/40 opacity-80"}`}
+                      title={`${count} flashcard${count === 1 ? "" : "s"}`}
+                    >
+                      {count}
+                    </span>
+                  )}
                 </div>
               </Html>
             )}
           </group>
         );
       })}
+    </group>
+  );
+}
+
+/** Up to five thin cards fanned beside a locus marker, facing into the room. */
+function CardStack({ count, yaw, colors }: { count: number; yaw: number; colors: SceneColors }) {
+  const n = Math.min(count, 5);
+  return (
+    <group rotation={[0, yaw, 0]}>
+      {Array.from({ length: n }, (_, k) => (
+        <mesh
+          key={k}
+          raycast={noRaycast}
+          position={[0.46 + k * 0.025, -0.08 + k * 0.05, 0.02 + k * 0.014]}
+          rotation={[0, 0, (k % 2 ? -1 : 1) * 0.05 * k]}
+        >
+          <boxGeometry args={[0.38, 0.26, 0.01]} />
+          <meshStandardMaterial color={k === n - 1 ? colors.locusActive : "#f4f1e8"} emissive={k === n - 1 ? colors.locusActive : "#000000"} emissiveIntensity={k === n - 1 ? 0.25 : 0} />
+        </mesh>
+      ))}
     </group>
   );
 }
