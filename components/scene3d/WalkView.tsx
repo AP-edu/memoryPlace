@@ -183,6 +183,8 @@ const CHEVRON = (() => {
   return new THREE.ShapeGeometry(sh);
 })();
 
+const NAV_PITCH = -0.3;
+
 function NavChevrons({
   arrows,
   stops,
@@ -331,7 +333,8 @@ export default function WalkView({
   className = "h-dvh",
 }: WalkViewProps) {
   const colors = useSceneColors();
-  const poseRef = useRef<Pose>(spawn ?? spawnPose(room));
+  // Look slightly down (Street-View style) so the floor chevrons are in view.
+  const poseRef = useRef<Pose>({ ...(spawn ?? spawnPose(room)), pitch: NAV_PITCH });
   const inputRef = useRef<MoveInput>({ throttle: 0, strafe: 0 });
   const joyRef = useRef<MoveInput>({ throttle: 0, strafe: 0 });
   const lookRef = useRef({ yawDelta: 0, pitchDelta: 0 });
@@ -653,8 +656,8 @@ export default function WalkView({
       )}
 
       {tour && stop && (
-        <div className="absolute inset-x-0 bottom-0 flex justify-center p-4">
-          <div className="card-base w-full max-w-lg p-5" role="dialog" aria-label="Tour card">
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center p-4">
+          <div className="card-base pointer-events-auto w-full max-w-lg p-5" role="dialog" aria-label="Tour card">
             <div className="mb-3 flex items-center gap-3">
               <span className="grid h-9 w-9 place-items-center rounded-full bg-accent text-base font-bold text-accent-foreground">{stop.locusIndex + 1}</span>
               <div className="min-w-0 flex-1">
@@ -708,8 +711,8 @@ export default function WalkView({
       )}
 
       {summary && !tour && (
-        <div className="absolute inset-x-0 bottom-0 flex justify-center p-4">
-          <div className="card-base w-full max-w-sm p-5 text-center">
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center p-4">
+          <div className="card-base pointer-events-auto w-full max-w-sm p-5 text-center">
             <p className="text-lg font-semibold">Tour complete</p>
             <p className="mt-1 text-sm text-muted-foreground">
               {summary.total > 0 ? `You recalled ${summary.got} of ${summary.total} cards.` : "You walked every locus."}
@@ -727,8 +730,8 @@ export default function WalkView({
       )}
 
       {focused && dismissedId !== focused.locus.id && !summary && (
-        <div className="absolute inset-x-0 bottom-0 flex justify-center p-4">
-          <div className="card-base max-h-[45dvh] w-full max-w-md overflow-y-auto p-4">
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center p-4">
+          <div className="card-base pointer-events-auto max-h-[45dvh] w-full max-w-md overflow-y-auto p-4">
             <div className="mb-1 flex items-start justify-between gap-3">
               <div>
                 <p className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">Locus {focusedNumber + 1}</p>

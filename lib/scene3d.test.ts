@@ -260,7 +260,7 @@ describe("street-view navigation", () => {
 
   it("places chevrons partway to a close target", () => {
     const a = arrowPlacement({ x: 0, z: 0 }, { x: 1, z: 0 });
-    expect(a.x).toBeCloseTo(0.6);
+    expect(a.x).toBeCloseTo(0.7);
     expect(a.yaw).toBeCloseTo(Math.PI / 2);
   });
 });

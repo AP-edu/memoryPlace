@@ -631,7 +631,7 @@ export function GridEditor({
       if (op?.link) placeOpening(op, kind, lookup, true);
     }
     setSelection({ type: "room", id: (segRooms[0] as Room).id });
-    setNotice(`Hallway added (${fmtM(plan.length)} m) between "${ra.title}" and "${rb.title}"`);
+    setNotice(`Hallway added (${fmtM(plan.length)}) between "${ra.title}" and "${rb.title}"`);
     return true;
   }
 
@@ -1460,7 +1460,7 @@ function LevelPanel({
       <h3 className="text-sm font-semibold">Level</h3>
       <input value={name} onChange={(e) => setName(e.target.value)} onBlur={apply} onKeyDown={(e) => e.key === "Enter" && apply()} className="input-base text-sm" aria-label="Level name" />
       <p className="text-xs text-muted-foreground">
-        Standard storey: rooms {fmtM(level.default_height)} m tall, floor at {fmtM(level.elevation)} m.
+        Standard storey: rooms {fmtM(level.default_height)} tall, floor at {fmtM(level.elevation)}.
       </p>
       <details className="group text-xs">
         <summary className="cursor-pointer select-none text-muted-foreground hover:text-foreground">Advanced</summary>
@@ -1539,7 +1539,7 @@ function RoomPanel({
         aria-label="Room name"
       />
       <p className="text-xs text-muted-foreground">
-        {fmtM(room.width)} × {fmtM(room.depth)} m · drag the corners to resize
+        {fmtM(room.width)} × {fmtM(room.depth)} · drag the corners to resize
       </p>
       <div className="space-y-1.5 border-t border-border pt-2">
         <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Connections</h4>
@@ -1680,7 +1680,7 @@ function ConnectChooser({
         { kind: "door", label: "Doorway", hint: "Frame with a door" },
       ]
     : [
-        { kind: "hallway", label: "Hallway", hint: `${fmtM(HALLWAY_WIDTH_M)} m corridor, open ends` },
+        { kind: "hallway", label: "Hallway", hint: `${fmtM(HALLWAY_WIDTH_M)} corridor, open ends` },
         { kind: "hallway-door", label: "Hallway + doorways", hint: "Corridor with a door at each end" },
       ];
   const blocked = !info.adjacent && !info.hall;
@@ -1714,7 +1714,7 @@ function ConnectChooser({
           ))}
           {!info.adjacent && info.hall && (
             <p className="text-[11px] text-muted-foreground">
-              {info.hall.segments.length === 1 ? "Straight" : "L-shaped"} corridor, {fmtM(info.hall.length)} m long.
+              {info.hall.segments.length === 1 ? "Straight" : "L-shaped"} corridor, {fmtM(info.hall.length)} long.
             </p>
           )}
           {info.adjacent && <p className="text-[11px] text-muted-foreground">These rooms touch, so no hallway is needed.</p>}

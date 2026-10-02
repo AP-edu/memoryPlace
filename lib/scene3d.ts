@@ -270,7 +270,7 @@ export function stopPose(stop: NavStop<Locus>, room: Room): Pose {
     return { ...p, pitch: p.pitch - 0.22 };
   }
   const inside = spawnAtDoor(stop.opening, room, 1.4);
-  return { ...inside, yaw: yawTo(-Math.sin(inside.yaw), -Math.cos(inside.yaw)) };
+  return { ...inside, yaw: yawTo(-Math.sin(inside.yaw), -Math.cos(inside.yaw)), pitch: -0.25 };
 }
 
 /** The thing a stop is about (locus marker or door centre), which arrows point at. */
@@ -293,12 +293,13 @@ export interface NavArrow {
 }
 
 /** Floor chevron `dist` metres from the player toward `target` (closer if the target is near). */
-export function arrowPlacement(from: { x: number; z: number }, target: { x: number; z: number }, dist = 1.6): { x: number; z: number; yaw: number; distance: number } {
+export function arrowPlacement(from: { x: number; z: number }, target: { x: number; z: number }, dist = 2.4): { x: number; z: number; yaw: number; distance: number } {
   const dx = target.x - from.x;
   const dz = target.z - from.z;
   const d = Math.hypot(dx, dz);
   if (d < 1e-6) return { x: from.x, z: from.z, yaw: 0, distance: 0 };
-  const k = Math.min(dist, d * 0.6) / d;
+  // ~2.4 m ahead keeps the chevron inside a 70° view at eye height without looking down.
+  const k = Math.min(dist, d * 0.7) / d;
   return { x: from.x + dx * k, z: from.z + dz * k, yaw: yawTo(dx, dz), distance: d };
 }
 
