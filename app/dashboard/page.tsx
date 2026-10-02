@@ -59,7 +59,7 @@ export default function Dashboard() {
             className="card-base group p-4 hover:shadow-card-hover"
           >
             <div className="flex items-start justify-between">
-              <span className="font-medium transition-colors group-hover:text-primary">{course.title}</span>
+              <span className="font-medium transition-colors group-hover:text-link">{course.title}</span>
               <button
                 onClick={(e) => {
                   e.preventDefault();
@@ -91,7 +91,7 @@ export default function Dashboard() {
                   </p>
                 </div>
                 <div className="flex items-center gap-4 text-sm">
-                  <span className="font-display text-lg font-medium text-primary">
+                  <span className="font-display text-lg font-medium text-link">
                     {r.score} / {r.total}
                   </span>
                   <Link href={`/quiz/${r.deck_id}`} className="btn-ghost">

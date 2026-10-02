@@ -92,7 +92,7 @@ export default function QuizPage() {
       <p className="mb-1 text-center text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
         {deck.title}
       </p>
-      <p className="mb-5 text-center font-display text-lg text-accent">
+      <p className="mb-5 text-center font-display text-lg text-highlight">
         Chamber {toRoman(index + 1)} of {toRoman(cards.length)}
       </p>
 
@@ -114,13 +114,13 @@ export default function QuizPage() {
           <div className="flex gap-3">
             <button
               onClick={() => handleAnswer(false)}
-              className="rounded-lg bg-destructive px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-destructive/90"
+              className="rounded-xl bg-destructive px-5 py-2 text-sm font-semibold text-destructive-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
             >
               Got it wrong
             </button>
             <button
               onClick={() => handleAnswer(true)}
-              className="rounded-lg bg-green-600 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-green-700"
+              className="rounded-xl bg-success px-5 py-2 text-sm font-semibold text-success-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
             >
               Got it right
             </button>

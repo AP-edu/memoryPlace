@@ -8,17 +8,20 @@ export default function Navbar() {
   const { data: session } = useSession();
   const pathname = usePathname();
 
-  if (!session) return null;
-  if (pathname === "/" || pathname === "/login" || pathname === "/signup") return null;
+  // Signed-out / landing pages have no navbar; keep the theme switch reachable.
+  if (!session || pathname === "/" || pathname === "/login" || pathname === "/signup") {
+    return <ThemeToggle className="fixed right-4 top-4 z-50 shadow-card" />;
+  }
 
   const linkClass = (active: boolean) =>
-    `transition-colors ${active ? "font-medium text-primary" : "text-muted-foreground hover:text-foreground"}`;
+    `transition-colors ${active ? "font-semibold text-link" : "text-muted-foreground hover:text-foreground"}`;
 
   return (
     <nav className="sticky top-0 z-40 border-b border-border bg-background/85 backdrop-blur transition-colors">
       <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4 sm:px-6">
         <div className="flex items-center gap-6">
-          <Link href="/dashboard" className="font-display text-xl font-semibold text-primary">
+          <Link href="/dashboard" className="flex items-center gap-2 text-lg font-extrabold tracking-tight text-foreground">
+            <span aria-hidden className="grid h-7 w-7 place-items-center rounded-lg bg-primary text-sm font-black text-primary-foreground">M</span>
             MemoryPlace
           </Link>
           <div className="flex gap-4 text-sm">

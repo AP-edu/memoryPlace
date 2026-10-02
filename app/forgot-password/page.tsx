@@ -33,7 +33,7 @@ export default function ForgotPasswordPage() {
         {message && <p className="mb-3 text-sm text-foreground">{message}</p>}
         {resetUrl && (
           <p className="mb-3 text-sm">
-            <Link href={resetUrl} className="font-medium text-primary hover:underline">
+            <Link href={resetUrl} className="font-medium text-link hover:underline">
               Continue to set a new password →
             </Link>
           </p>
@@ -51,7 +51,7 @@ export default function ForgotPasswordPage() {
       </div>
       <p className="mt-5 text-center text-sm text-muted-foreground">
         Remembered it?{" "}
-        <Link href="/login" className="font-medium text-primary hover:underline">
+        <Link href="/login" className="font-medium text-link hover:underline">
           Back to log in
         </Link>
       </p>

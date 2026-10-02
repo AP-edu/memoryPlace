@@ -1,11 +1,21 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useFetch } from "@/hooks/useFetch";
+import { useSearchParam } from "@/hooks/useSearchParam";
 import type { Card, Locus, Opening, Room, WallFace } from "@/types/database";
 import { cardBack, cardFront } from "@/types/database";
 import { clamp01, openingWidthM, wallPoint } from "@/lib/geometry";
+import { httpLociActions } from "@/components/scene3d/actions";
+import { reorderPositions, tourOrder } from "@/lib/scene3d";
+
+// three.js is client-only and heavy: load the 3D editor on demand.
+const Room3DEditor = dynamic(() => import("@/components/scene3d/Room3DEditor"), {
+  ssr: false,
+  loading: () => <div className="h-[520px] animate-pulse rounded-2xl border border-border bg-card" />,
+});
 
 const THICK = 0.5;
 const SNAP_STEPS = [0, 0.25, 0.5, 0.75, 1];
@@ -60,6 +70,22 @@ export default function RoomPage() {
 
   const [formError, setFormError] = useState<string | null>(null);
 
+  // 2D plan vs 3D editor; both edit the same loci/cards rows via the same API.
+  const viewParam = useSearchParam("view");
+  const [viewChoice, setView] = useState<"2d" | "3d" | null>(null);
+  const view = viewChoice ?? (viewParam === "3d" ? "3d" : "2d");
+  function switchView(next: "2d" | "3d") {
+    setView(next);
+    const url = new URL(window.location.href);
+    if (next === "3d") url.searchParams.set("view", "3d");
+    else url.searchParams.delete("view");
+    window.history.replaceState(null, "", url);
+  }
+  const lociActions = useMemo(
+    () => httpLociActions((what) => (what === "loci" ? refetchLoci() : refetchCards())),
+    [refetchLoci, refetchCards]
+  );
+
   // Geometry
   const [roomTitle, setRoomTitle] = useState("");
   const [roomW, setRoomW] = useState("10");
@@ -101,6 +127,8 @@ export default function RoomPage() {
   const [newOpeningOffset, setNewOpeningOffset] = useState(0.5);
 
   const selected = loci?.find((l) => l.id === activeId) ?? null;
+  // Study order (same as the 3D editor and walk tour): position, then created_at.
+  const orderedLoci = useMemo(() => tourOrder(loci ?? []), [loci]);
   const selectedCards = cards?.filter((c) => c.locus_id === activeId) ?? [];
   const size = room ? { width: room.width, depth: room.depth } : null;
 
@@ -192,17 +220,13 @@ export default function RoomPage() {
     refetchLoci();
   }
 
-  async function moveLocus(idx: number, dir: -1 | 1) {
+  async function moveLocus(locus: Locus, dir: -1 | 1) {
     if (!loci) return;
-    const j = idx + dir;
-    if (j < 0 || j >= loci.length) return;
-    const a = loci[idx];
-    const b = loci[j];
-    await Promise.all([
-      fetch(`/api/loci/${a.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ position: b.position }) }),
-      fetch(`/api/loci/${b.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ position: a.position }) }),
-    ]);
-    refetchLoci();
+    // Normalised reorder: swapping raw positions was a no-op when two loci
+    // shared a position (e.g. after deletions).
+    const updates = reorderPositions(loci, locus.id, dir);
+    if (updates.length === 0) return;
+    await lociActions.setPositions(updates).catch(() => setFormError("Failed to reorder loci."));
   }
 
   async function deleteLocus(locus: Locus) {
@@ -311,8 +335,11 @@ export default function RoomPage() {
           <Link href={`/study/${room.id}`} className="btn-outline !px-3 !py-1.5">
             Study
           </Link>
-          <Link href={`/spike-3d/${room.id}`} className="btn-ghost">
-            3D spike
+          <Link href={`/walk/${room.id}`} className="btn-outline !px-3 !py-1.5">
+            Walk
+          </Link>
+          <Link href={`/walk/${room.id}?tour=1`} className="btn-primary !px-3 !py-1.5">
+            Tour loci
           </Link>
           <button onClick={deleteRoom} className="btn-danger">
             Delete room
@@ -320,7 +347,22 @@ export default function RoomPage() {
         </div>
       </div>
 
-      <h1 className="mt-3 mb-4 text-3xl font-semibold">Room Editor</h1>
+      <div className="mt-3 mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-3xl font-semibold">Room Editor</h1>
+        <div role="tablist" aria-label="Editor view" className="inline-flex rounded-xl border border-border bg-card p-1 text-sm">
+          {(["2d", "3d"] as const).map((v) => (
+            <button
+              key={v}
+              role="tab"
+              aria-selected={view === v}
+              onClick={() => switchView(v)}
+              className={`rounded-lg px-3 py-1.5 font-medium transition ${view === v ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              {v === "2d" ? "2D plan" : "3D room"}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <div className="card-base mb-4 flex flex-wrap items-end gap-2 p-4">
         <div className="flex flex-col gap-1">
@@ -349,7 +391,13 @@ export default function RoomPage() {
 
       {formError && <p className="mb-4 text-sm text-destructive">{formError}</p>}
 
-      {size && (
+      {view === "3d" && (
+        <div className="mb-4">
+          <Room3DEditor room={room} loci={loci ?? []} openings={openings ?? []} cards={cards ?? []} actions={lociActions} />
+        </div>
+      )}
+
+      {view === "2d" && size && (
         <div className="card-base mb-4 p-4">
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <h2 className="font-semibold">Floor plan (top-down)</h2>
@@ -433,7 +481,7 @@ export default function RoomPage() {
             </text>
 
             {/* Loci */}
-            {(loci ?? []).map((locus) => {
+            {orderedLoci.map((locus, i) => {
               const p = wallPoint(locus.wall ?? "north", locus.wall_offset ?? 0, size);
               const isSel = locus.id === activeId;
               return (
@@ -450,7 +498,7 @@ export default function RoomPage() {
                 >
                   <circle r={0.42} fill={isSel ? "var(--primary)" : "var(--accent)"} stroke="var(--background)" strokeWidth={0.14} />
                   <text y={0.14} textAnchor="middle" style={{ fill: "var(--accent-foreground)" }} fontSize={0.52} fontWeight={700}>
-                    {locus.position + 1}
+                    {i + 1}
                   </text>
                 </g>
               );
@@ -459,6 +507,7 @@ export default function RoomPage() {
         </div>
       )}
 
+      {view === "2d" && (
       <div className="grid gap-4 md:grid-cols-2">
         <div className="card-base flex flex-col gap-3 p-4">
           <div>
@@ -505,7 +554,7 @@ export default function RoomPage() {
                   key={s}
                   onClick={() => setGeoOffset(s)}
                   className={`rounded-full border px-2.5 py-0.5 text-xs transition-colors ${
-                    Math.abs(geoOffset - s) < 0.01 ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/50"
+                    Math.abs(geoOffset - s) < 0.01 ? "border-primary bg-primary/10 text-link" : "border-border text-muted-foreground hover:border-primary/50"
                   }`}
                 >
                   {s * 100}%
@@ -550,7 +599,7 @@ export default function RoomPage() {
             <p className="text-sm text-muted-foreground">No loci yet — click a wall on the floor plan to begin.</p>
           )}
           <div className="flex flex-col gap-1.5">
-            {(loci ?? []).map((locus, i) => (
+            {orderedLoci.map((locus, i) => (
               <div
                 key={locus.id}
                 onClick={() => selectLocus(locus)}
@@ -558,18 +607,18 @@ export default function RoomPage() {
                   locus.id === activeId ? "border-primary bg-primary/10" : "border-border hover:border-primary/40"
                 }`}
               >
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent/15 text-xs font-semibold text-accent">
-                  {locus.position + 1}
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent/15 text-xs font-semibold text-highlight">
+                  {i + 1}
                 </span>
                 <span className="min-w-0 flex-1 truncate">{locus.label}</span>
                 <span className="shrink-0 text-xs text-muted-foreground">
                   {WALL_LABEL[locus.wall ?? "north"]} · {Math.round((locus.wall_offset ?? 0) * 100)}% · {locus.height ?? 1.5}m
                 </span>
                 <div className="flex shrink-0 items-center gap-1">
-                  <button onClick={(e) => { e.stopPropagation(); moveLocus(i, -1); }} disabled={i === 0} className="rounded border border-border px-1.5 text-xs disabled:opacity-40" aria-label={`Move ${locus.label} earlier`}>
+                  <button onClick={(e) => { e.stopPropagation(); moveLocus(locus, -1); }} disabled={i === 0} className="rounded border border-border px-1.5 text-xs disabled:opacity-40" aria-label={`Move ${locus.label} earlier`}>
                     {"\u2191"}
                   </button>
-                  <button onClick={(e) => { e.stopPropagation(); moveLocus(i, 1); }} disabled={i === (loci?.length ?? 1) - 1} className="rounded border border-border px-1.5 text-xs disabled:opacity-40" aria-label={`Move ${locus.label} later`}>
+                  <button onClick={(e) => { e.stopPropagation(); moveLocus(locus, 1); }} disabled={i === (loci?.length ?? 1) - 1} className="rounded border border-border px-1.5 text-xs disabled:opacity-40" aria-label={`Move ${locus.label} later`}>
                     {"\u2193"}
                   </button>
                   <button onClick={(e) => { e.stopPropagation(); selectLocus(locus); }} className="rounded border border-border px-1.5 text-xs" aria-label={`Edit ${locus.label}`}>
@@ -581,6 +630,7 @@ export default function RoomPage() {
           </div>
         </div>
       </div>
+      )}
 
       <div className="mt-4 grid gap-4 md:grid-cols-2">
         <div className="card-base p-4">
@@ -613,7 +663,7 @@ export default function RoomPage() {
                   {op.wall} wall · {Math.round((op.wall_offset ?? 0.5) * 100)}%
                 </span>
                 <div className="ml-auto flex items-center gap-2 text-xs">
-                  <button onClick={() => toggleOpening(op)} className="text-primary hover:underline">
+                  <button onClick={() => toggleOpening(op)} className="text-link hover:underline">
                     {op.kind === "door" ? "Make archway" : "Make door"}
                   </button>
                   <button onClick={() => deleteOpening(op)} className="text-destructive hover:underline">

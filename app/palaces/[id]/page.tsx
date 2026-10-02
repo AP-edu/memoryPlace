@@ -26,6 +26,8 @@ export default function PalacePage() {
   const [palaceErr, setPalaceErr] = useState<string | null>(null);
   const [liveRooms, setLiveRooms] = useState<Room[]>([]);
   const [liveLevels, setLiveLevels] = useState<Level[]>([]);
+  // Openings as edited in the grid editor, so the 3D preview shows door edits live.
+  const [liveOpenings, setLiveOpenings] = useState<Opening[]>([]);
   const [previewRoomId, setPreviewRoomId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -36,9 +38,10 @@ export default function PalacePage() {
     }
   }, [palace]);
 
-  const onRoomsChange = useCallback((rs: Room[], ls: Level[]) => {
+  const onRoomsChange = useCallback((rs: Room[], ls: Level[], os: Opening[]) => {
     setLiveRooms(rs);
     setLiveLevels(ls);
+    setLiveOpenings(os);
   }, []);
 
   async function savePalace() {
@@ -102,21 +105,24 @@ export default function PalacePage() {
       {previewRoom && (
         <div className="card-base mt-6 p-4">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-xl font-semibold">3D preview — {previewRoom.title}</h2>
+            <h2 className="text-xl font-semibold">3D preview: {previewRoom.title}</h2>
             <button onClick={() => setPreviewRoomId(null)} className="btn-ghost">
               Close
             </button>
           </div>
-          <Room3DPreview room={previewRoom} />
+          <Room3DPreview room={previewRoom} openings={liveOpenings.filter((o) => o.room_id === previewRoom.id)} />
           <div className="mt-3 flex gap-3 text-sm">
             <Link href={`/walk/${previewRoom.id}`} className="btn-primary px-3 py-1.5">
               Walk this room →
             </Link>
-            <Link href={`/spike-3d/${previewRoom.id}`} className="btn-ghost">
-              Open 3D spike
+            <Link href={`/walk/${previewRoom.id}?tour=1`} className="btn-outline px-3 py-1.5">
+              Tour the loci
+            </Link>
+            <Link href={`/rooms/${previewRoom.id}?view=3d`} className="btn-ghost">
+              Edit in 3D
             </Link>
             <Link href={`/rooms/${previewRoom.id}`} className="btn-ghost">
-              Loci &amp; cards
+              Loci &amp; cards (2D)
             </Link>
           </div>
         </div>

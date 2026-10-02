@@ -59,7 +59,16 @@ export async function POST(req: NextRequest) {
       : { x: typeof x === "number" ? x : 0, y: typeof y === "number" ? y : 0 };
   const placedAt = validWall && wallOffset !== null ? wallPoint(wall as WallFace, wallOffset, size) : null;
 
-  const { count } = await supabase.from("loci").select("*", { count: "exact", head: true }).eq("room_id", room_id);
+  // Append to the end of the study path: max(position) + 1 (a row count would
+  // collide with existing positions after deletions).
+  const { data: last } = await supabase
+    .from("loci")
+    .select("position")
+    .eq("room_id", room_id)
+    .order("position", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const nextPosition = typeof last?.position === "number" ? last.position + 1 : 0;
 
   const { data, error } = await supabase
     .from("loci")
@@ -73,7 +82,7 @@ export async function POST(req: NextRequest) {
       wall: validWall ? (wall as WallFace) : null,
       wall_offset: validWall ? wallOffset : null,
       height: typeof height === "number" && Number.isFinite(height) && height > 0 ? height : 1.5,
-      position: typeof position === "number" ? position : (count ?? 0),
+      position: typeof position === "number" ? position : nextPosition,
     })
     .select()
     .single();

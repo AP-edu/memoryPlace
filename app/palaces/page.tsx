@@ -58,7 +58,7 @@ export default function PalacesPage() {
             className="card-base group p-4 hover:shadow-card-hover"
           >
             <div className="flex items-start justify-between">
-              <span className="font-medium transition-colors group-hover:text-primary">{palace.title}</span>
+              <span className="font-medium transition-colors group-hover:text-link">{palace.title}</span>
               <button
                 onClick={(e) => {
                   e.preventDefault();
