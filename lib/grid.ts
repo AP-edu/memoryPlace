@@ -411,3 +411,131 @@ export function autoLinks(changedRoomId: string, rooms: PlacementRoom[], opening
   }
   return out;
 }
+
+// ---------------------------------------------------------------- magnetic snapping
+
+/** Guide lines to highlight while snapping (level coordinates). */
+export interface SnapGuides {
+  /** Vertical guide lines at these x values. */
+  x: number[];
+  /** Horizontal guide lines at these z values. */
+  z: number[];
+}
+
+export interface EdgeTargets {
+  x: number[];
+  z: number[];
+}
+
+/** All room edges on the level, as magnetic snap targets. */
+export function edgeTargets(others: Rect[]): EdgeTargets {
+  const x = new Set<number>();
+  const z = new Set<number>();
+  for (const r of others) {
+    x.add(clean(r.x));
+    x.add(clean(r.x + r.w));
+    z.add(clean(r.z));
+    z.add(clean(r.z + r.d));
+  }
+  return { x: [...x], z: [...z] };
+}
+
+/**
+ * Snap one coordinate: to the nearest room edge if one is within `threshold`
+ * metres (magnetic, wins over the grid), else to the grid.
+ * `hit` is the edge it locked onto (for guide lines), or null.
+ */
+export function snapCoord(v: number, step: number, targets: number[], threshold: number): { v: number; hit: number | null } {
+  let best: number | null = null;
+  for (const t of targets) {
+    if (Math.abs(t - v) <= threshold && (best === null || Math.abs(t - v) < Math.abs(best - v))) best = t;
+  }
+  if (best !== null) return { v: clean(best), hit: clean(best) };
+  return { v: snap(v, step), hit: null };
+}
+
+/** Best shift (|shift| <= threshold) that puts either edge [a, b] onto a target, or null. */
+function edgeShift(a: number, b: number, targets: number[], threshold: number): { shift: number; hit: number } | null {
+  let best: { shift: number; hit: number } | null = null;
+  for (const t of targets) {
+    for (const e of [a, b]) {
+      const s = t - e;
+      if (Math.abs(s) <= threshold && (!best || Math.abs(s) < Math.abs(best.shift))) best = { shift: s, hit: t };
+    }
+  }
+  return best;
+}
+
+/** Guides for every edge of `r` that lies exactly on a target edge. */
+function alignedGuides(r: Rect, t: EdgeTargets): SnapGuides {
+  const on = (v: number, list: number[]) => list.some((x) => Math.abs(x - v) < 1e-6);
+  return {
+    x: [r.x, r.x + r.w].filter((v) => on(v, t.x)).map(clean),
+    z: [r.z, r.z + r.d].filter((v) => on(v, t.z)).map(clean),
+  };
+}
+
+/**
+ * Move `orig` by (dx, dz): each axis snaps magnetically so one of the room's
+ * edges lands on a neighbouring room's edge when within `threshold`, else its
+ * min corner snaps to the grid.
+ */
+export function snapMove(orig: Rect, dx: number, dz: number, step: number, others: Rect[], threshold: number): { rect: Rect; guides: SnapGuides } {
+  const t = edgeTargets(others);
+  const rawX = orig.x + dx;
+  const rawZ = orig.z + dz;
+  const sx = edgeShift(rawX, rawX + orig.w, t.x, threshold);
+  const sz = edgeShift(rawZ, rawZ + orig.d, t.z, threshold);
+  const rect = {
+    x: sx ? clean(rawX + sx.shift) : snap(rawX, step),
+    z: sz ? clean(rawZ + sz.shift) : snap(rawZ, step),
+    w: orig.w,
+    d: orig.d,
+  };
+  return { rect, guides: alignedGuides(rect, t) };
+}
+
+/** Draw a rectangle between two points; each corner coordinate snaps to edges, then grid. */
+export function snapDraw(a: Pt, b: Pt, step: number, minSize: number, others: Rect[], threshold: number): { rect: Rect | null; guides: SnapGuides } {
+  const t = edgeTargets(others);
+  const ax = snapCoord(a.x, step, t.x, threshold).v;
+  const az = snapCoord(a.z, step, t.z, threshold).v;
+  const bx = snapCoord(b.x, step, t.x, threshold).v;
+  const bz = snapCoord(b.z, step, t.z, threshold).v;
+  const x = Math.min(ax, bx);
+  const z = Math.min(az, bz);
+  const w = clean(Math.abs(bx - ax));
+  const d = clean(Math.abs(bz - az));
+  if (w + EPS < minSize || d + EPS < minSize) return { rect: null, guides: { x: [], z: [] } };
+  const rect = { x, z, w, d };
+  return { rect, guides: alignedGuides(rect, t) };
+}
+
+/** Resize via `handle`; moving edges snap to room edges (magnetic) or the grid. */
+export function snapResize(orig: Rect, handle: Handle, p: Pt, step: number, minSize: number, others: Rect[], threshold: number): { rect: Rect; guides: SnapGuides } {
+  const t = edgeTargets(others);
+  let x0 = orig.x;
+  let x1 = orig.x + orig.w;
+  let z0 = orig.z;
+  let z1 = orig.z + orig.d;
+  if (handle.includes("e")) x1 = Math.max(snapCoord(p.x, step, t.x, threshold).v, x0 + minSize);
+  if (handle.includes("w")) x0 = Math.min(snapCoord(p.x, step, t.x, threshold).v, x1 - minSize);
+  if (handle.includes("n")) z1 = Math.max(snapCoord(p.z, step, t.z, threshold).v, z0 + minSize);
+  if (handle.includes("s")) z0 = Math.min(snapCoord(p.z, step, t.z, threshold).v, z1 - minSize);
+  const rect = { x: clean(x0), z: clean(z0), w: clean(x1 - x0), d: clean(z1 - z0) };
+  return { rect, guides: alignedGuides(rect, t) };
+}
+
+/** Rooms that share a wall stretch at least `minLen` long with `id` (candidates for a direct connection). */
+export function adjacentRooms(id: string, rooms: PlacementRoom[], minLen = 0.9): Array<{ roomId: string; shared: SharedWall }> {
+  const self = rooms.find((r) => r.id === id);
+  if (!self) return [];
+  const out: Array<{ roomId: string; shared: SharedWall }> = [];
+  for (const o of rooms) {
+    if (o.id === id) continue;
+    for (const sw of sharedWalls(self.rect, o.rect)) {
+      if (sw.to - sw.from + 1e-6 >= minLen) out.push({ roomId: o.id, shared: sw });
+    }
+  }
+  return out;
+}

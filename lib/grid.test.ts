@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  adjacentRooms,
   autoLinks,
+  snapCoord,
+  snapDraw,
+  snapMove,
+  snapResize,
   findLinkTarget,
   findPartner,
   gridLines,
@@ -233,5 +238,46 @@ describe("autoLinks (rooms moved so they touch)", () => {
     const three: PlacementRoom[] = [...rooms, { id: "c", rect: r(0, 4, 4, 4) }];
     // a <-> c touch, but only b moved: leave a/c alone.
     expect(autoLinks("b", three, [op("oa", "a", "north", 0.5)])).toEqual([]);
+  });
+});
+
+describe("magnetic snapping to room edges", () => {
+  // Neighbour edges at x = 3.3 / 6.3 (off the 1 m grid), z = 0 / 4.
+  const others = [r(3.3, 0, 3, 4)];
+
+  it("snaps a coordinate to a nearby edge before the grid", () => {
+    expect(snapCoord(3.45, 1, [3.3, 6.3], 0.3)).toEqual({ v: 3.3, hit: 3.3 });
+    expect(snapCoord(4.7, 1, [3.3, 6.3], 0.3)).toEqual({ v: 5, hit: null });
+  });
+
+  it("moves a room flush against a neighbour's wall and reports guides", () => {
+    // 2 m wide room dragged so its east edge lands near x = 3.3.
+    const { rect, guides } = snapMove(r(0, 0, 2, 2), 1.15, 0.1, 1, others, 0.3);
+    expect(rect).toEqual({ x: 1.3, z: 0, w: 2, d: 2 });
+    expect(guides.x).toContain(3.3);
+    expect(guides.z).toContain(0);
+  });
+
+  it("falls back to the grid when nothing is close", () => {
+    const { rect, guides } = snapMove(r(0, 0, 2, 2), 10.4, 10.6, 1, others, 0.3);
+    expect(rect).toEqual({ x: 10, z: 11, w: 2, d: 2 });
+    expect(guides).toEqual({ x: [], z: [] });
+  });
+
+  it("snaps drawn and resized edges to neighbours", () => {
+    const drawn = snapDraw({ x: 6.4, z: 0.1 }, { x: 9.2, z: 3.8 }, 1, 1, others, 0.3);
+    expect(drawn.rect).toEqual({ x: 6.3, z: 0, w: 2.7, d: 4 });
+    expect(drawn.guides.x).toContain(6.3);
+    const resized = snapResize(r(7, 0, 2, 2), "w", { x: 6.2, z: 1 }, 1, 1, others, 0.3);
+    expect(resized.rect).toEqual({ x: 6.3, z: 0, w: 2.7, d: 2 });
+  });
+
+  it("lists adjacent rooms with enough shared wall", () => {
+    const rooms = [
+      { id: "a", rect: r(0, 0, 4, 4) },
+      { id: "b", rect: r(4, 0, 4, 4) },
+      { id: "c", rect: r(0, 4, 0.5, 2) }, // touches a's north wall for only 0.5 m
+    ];
+    expect(adjacentRooms("a", rooms).map((x) => x.roomId)).toEqual(["b"]);
   });
 });
