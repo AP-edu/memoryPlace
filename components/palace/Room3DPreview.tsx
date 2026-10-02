@@ -7,9 +7,10 @@ import { tourOrder } from "@/lib/scene3d";
 
 // Palace-page preview: orbit view of the selected room (all openings, numbered
 // study path). Editing happens in the room's 3D editor; walking in /walk.
-export function Room3DPreview({ room }: { room: Room }) {
+export function Room3DPreview({ room, openings: liveOpenings }: { room: Room; openings?: Opening[] }) {
   const { data: loci } = useFetch<Locus[]>(`/api/loci?room=${room.id}`);
-  const { data: openings } = useFetch<Opening[]>(`/api/openings?room=${room.id}`);
+  const { data: fetchedOpenings } = useFetch<Opening[]>(liveOpenings ? null : `/api/openings?room=${room.id}`);
+  const openings = liveOpenings ?? fetchedOpenings;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const ordered = tourOrder(loci ?? []);
   const index = ordered.findIndex((l) => l.id === selectedId);

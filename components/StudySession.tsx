@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useFetch } from "@/hooks/useFetch";
@@ -48,6 +48,7 @@ export default function StudySession({
   const [showAnswer, setShowAnswer] = useState(false);
   const [score, setScore] = useState(0);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const { data, loading, error } = useFetch<ReviewPayload>(endpoint);
 
@@ -68,10 +69,11 @@ export default function StudySession({
   }
 
   async function handleAnswer(correct: boolean) {
-    if (!data || !card) return;
+    if (!data || !card || saving) return;
+    // Count the answer only once it is saved, so retrying after a failed save
+    // can't double-count (previously the score was bumped before the POST).
     const nextScore = correct ? score + 1 : score;
-    setScore(nextScore);
-
+    setSaving(true);
     try {
       const res = await fetch("/api/reviews", {
         method: "POST",
@@ -79,13 +81,17 @@ export default function StudySession({
         body: JSON.stringify({ card_id: card.id, correct }),
       });
       if (!res.ok) {
-        setSaveError("Failed to save your review — try again.");
+        setSaveError("Failed to save your review. Try again.");
+        setSaving(false);
         return;
       }
     } catch {
-      setSaveError("Failed to save your review — try again.");
+      setSaveError("Failed to save your review. Try again.");
+      setSaving(false);
       return;
     }
+    setSaveError(null);
+    setScore(nextScore);
 
     if (isLast) {
       try {
@@ -102,7 +108,28 @@ export default function StudySession({
       setIndex(index + 1);
       setShowAnswer(false);
     }
+    setSaving(false);
   }
+
+  // Keyboard: Space/Enter shows the answer, 1 = right, 2 = wrong.
+  const keyRef = useRef<(e: KeyboardEvent) => void>(() => {});
+  useEffect(() => {
+    keyRef.current = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "BUTTON")) return;
+      if (!showAnswer && (e.code === "Space" || e.code === "Enter")) {
+        e.preventDefault();
+        setShowAnswer(true);
+      } else if (showAnswer && (e.key === "1" || e.key === "2")) {
+        void handleAnswer(e.key === "1");
+      }
+    };
+  });
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => keyRef.current(e);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   if (loading) return <p className="p-6 text-muted-foreground">Loading study...</p>;
   if (error || !data) {
@@ -120,7 +147,7 @@ export default function StudySession({
     return (
       <div className="mx-auto max-w-lg p-6 text-center">
         <p className="mb-2 text-sm text-muted-foreground">{data.title}</p>
-        <p className="text-lg">No cards in this palace yet — add loci and cards first.</p>
+        <p className="text-lg">No cards here yet. Add loci and cards first.</p>
         <Link href={backHref} className="btn-primary mt-4">
           {"\u2190 "}{backLabel}
         </Link>
@@ -168,7 +195,7 @@ export default function StudySession({
         {data.title}
       </p>
       <p className="mb-3 text-center font-display text-lg text-accent">
-        Locus {index + 1} of {queue.length}
+        Card {index + 1} of {queue.length}
       </p>
       <div className="mb-5 flex justify-center gap-2 text-sm">
         <button
@@ -210,12 +237,14 @@ export default function StudySession({
           <div className="flex gap-3">
             <button
               onClick={() => handleAnswer(false)}
+              disabled={saving}
               className="rounded-lg bg-destructive px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-destructive/90"
             >
               Got it wrong
             </button>
             <button
               onClick={() => handleAnswer(true)}
+              disabled={saving}
               className="rounded-lg bg-green-600 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-green-700"
             >
               Got it right

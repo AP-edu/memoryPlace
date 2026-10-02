@@ -9,6 +9,7 @@ import type { Card, Locus, Opening, Room, WallFace } from "@/types/database";
 import { cardBack, cardFront } from "@/types/database";
 import { clamp01, openingWidthM, wallPoint } from "@/lib/geometry";
 import { httpLociActions } from "@/components/scene3d/actions";
+import { reorderPositions, tourOrder } from "@/lib/scene3d";
 
 // three.js is client-only and heavy: load the 3D editor on demand.
 const Room3DEditor = dynamic(() => import("@/components/scene3d/Room3DEditor"), {
@@ -126,6 +127,8 @@ export default function RoomPage() {
   const [newOpeningOffset, setNewOpeningOffset] = useState(0.5);
 
   const selected = loci?.find((l) => l.id === activeId) ?? null;
+  // Study order (same as the 3D editor and walk tour): position, then created_at.
+  const orderedLoci = useMemo(() => tourOrder(loci ?? []), [loci]);
   const selectedCards = cards?.filter((c) => c.locus_id === activeId) ?? [];
   const size = room ? { width: room.width, depth: room.depth } : null;
 
@@ -217,17 +220,13 @@ export default function RoomPage() {
     refetchLoci();
   }
 
-  async function moveLocus(idx: number, dir: -1 | 1) {
+  async function moveLocus(locus: Locus, dir: -1 | 1) {
     if (!loci) return;
-    const j = idx + dir;
-    if (j < 0 || j >= loci.length) return;
-    const a = loci[idx];
-    const b = loci[j];
-    await Promise.all([
-      fetch(`/api/loci/${a.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ position: b.position }) }),
-      fetch(`/api/loci/${b.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ position: a.position }) }),
-    ]);
-    refetchLoci();
+    // Normalised reorder: swapping raw positions was a no-op when two loci
+    // shared a position (e.g. after deletions).
+    const updates = reorderPositions(loci, locus.id, dir);
+    if (updates.length === 0) return;
+    await lociActions.setPositions(updates).catch(() => setFormError("Failed to reorder loci."));
   }
 
   async function deleteLocus(locus: Locus) {
@@ -482,7 +481,7 @@ export default function RoomPage() {
             </text>
 
             {/* Loci */}
-            {(loci ?? []).map((locus) => {
+            {orderedLoci.map((locus, i) => {
               const p = wallPoint(locus.wall ?? "north", locus.wall_offset ?? 0, size);
               const isSel = locus.id === activeId;
               return (
@@ -499,7 +498,7 @@ export default function RoomPage() {
                 >
                   <circle r={0.42} fill={isSel ? "var(--primary)" : "var(--accent)"} stroke="var(--background)" strokeWidth={0.14} />
                   <text y={0.14} textAnchor="middle" style={{ fill: "var(--accent-foreground)" }} fontSize={0.52} fontWeight={700}>
-                    {locus.position + 1}
+                    {i + 1}
                   </text>
                 </g>
               );
@@ -600,7 +599,7 @@ export default function RoomPage() {
             <p className="text-sm text-muted-foreground">No loci yet — click a wall on the floor plan to begin.</p>
           )}
           <div className="flex flex-col gap-1.5">
-            {(loci ?? []).map((locus, i) => (
+            {orderedLoci.map((locus, i) => (
               <div
                 key={locus.id}
                 onClick={() => selectLocus(locus)}
@@ -609,17 +608,17 @@ export default function RoomPage() {
                 }`}
               >
                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent/15 text-xs font-semibold text-accent">
-                  {locus.position + 1}
+                  {i + 1}
                 </span>
                 <span className="min-w-0 flex-1 truncate">{locus.label}</span>
                 <span className="shrink-0 text-xs text-muted-foreground">
                   {WALL_LABEL[locus.wall ?? "north"]} · {Math.round((locus.wall_offset ?? 0) * 100)}% · {locus.height ?? 1.5}m
                 </span>
                 <div className="flex shrink-0 items-center gap-1">
-                  <button onClick={(e) => { e.stopPropagation(); moveLocus(i, -1); }} disabled={i === 0} className="rounded border border-border px-1.5 text-xs disabled:opacity-40" aria-label={`Move ${locus.label} earlier`}>
+                  <button onClick={(e) => { e.stopPropagation(); moveLocus(locus, -1); }} disabled={i === 0} className="rounded border border-border px-1.5 text-xs disabled:opacity-40" aria-label={`Move ${locus.label} earlier`}>
                     {"\u2191"}
                   </button>
-                  <button onClick={(e) => { e.stopPropagation(); moveLocus(i, 1); }} disabled={i === (loci?.length ?? 1) - 1} className="rounded border border-border px-1.5 text-xs disabled:opacity-40" aria-label={`Move ${locus.label} later`}>
+                  <button onClick={(e) => { e.stopPropagation(); moveLocus(locus, 1); }} disabled={i === (loci?.length ?? 1) - 1} className="rounded border border-border px-1.5 text-xs disabled:opacity-40" aria-label={`Move ${locus.label} later`}>
                     {"\u2193"}
                   </button>
                   <button onClick={(e) => { e.stopPropagation(); selectLocus(locus); }} className="rounded border border-border px-1.5 text-xs" aria-label={`Edit ${locus.label}`}>

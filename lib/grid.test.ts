@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  autoLinks,
   findLinkTarget,
   findPartner,
   gridLines,
@@ -194,5 +195,43 @@ describe("gridLines", () => {
   it("covers the range on step multiples and caps density", () => {
     expect(gridLines(-1.2, 1.2, 0.5)).toEqual([-1, -0.5, 0, 0.5, 1]);
     expect(gridLines(0, 1000, 0.5, 100).length).toBeLessThanOrEqual(101);
+  });
+});
+
+describe("autoLinks (rooms moved so they touch)", () => {
+  const op = (id: string, room_id: string, wall: LinkableOpening["wall"], wall_offset: number, target: string | null = null): LinkableOpening => ({
+    id,
+    room_id,
+    wall,
+    wall_offset,
+    widthM: 0.9,
+    target_room_id: target,
+  });
+  // a: 4x4 at origin; b: 4x6 moved to touch a's east wall (x = 4), z 0..6.
+  const rooms: PlacementRoom[] = [
+    { id: "a", rect: r(0, 0, 4, 4) },
+    { id: "b", rect: r(4, 0, 4, 6) },
+  ];
+
+  it("creates a mirror for an unlinked door that now sits on the shared wall", () => {
+    const links = autoLinks("b", rooms, [op("oa", "a", "east", 0.5)]);
+    expect(links).toEqual([
+      { openingId: "oa", targetRoomId: "b", partnerId: null, mirror: { roomId: "b", wall: "west", offset: expect.closeTo(2 / 6, 6), widthM: 0.9 } },
+    ]);
+  });
+
+  it("pairs with an overlapping unlinked opening on the neighbour instead of duplicating", () => {
+    const links = autoLinks("a", rooms, [op("oa", "a", "east", 0.5), op("ob", "b", "west", 0.35)]);
+    expect(links).toHaveLength(1);
+    expect(links[0]).toMatchObject({ openingId: "oa", targetRoomId: "b", partnerId: "ob" });
+  });
+
+  it("ignores linked doors, doors off the shared stretch, and rooms not involved in the move", () => {
+    expect(autoLinks("b", rooms, [op("oa", "a", "east", 0.5, "b"), op("ob", "b", "west", 2 / 6, "a")])).toEqual([]);
+    // b's west wall spans z 0..6 but only 0..4 is shared; a door at z = 5 stays unlinked.
+    expect(autoLinks("b", rooms, [op("ob", "b", "west", 5 / 6)])).toEqual([]);
+    const three: PlacementRoom[] = [...rooms, { id: "c", rect: r(0, 4, 4, 4) }];
+    // a <-> c touch, but only b moved: leave a/c alone.
+    expect(autoLinks("b", three, [op("oa", "a", "north", 0.5)])).toEqual([]);
   });
 });

@@ -26,6 +26,8 @@ export default function PalacePage() {
   const [palaceErr, setPalaceErr] = useState<string | null>(null);
   const [liveRooms, setLiveRooms] = useState<Room[]>([]);
   const [liveLevels, setLiveLevels] = useState<Level[]>([]);
+  // Openings as edited in the grid editor, so the 3D preview shows door edits live.
+  const [liveOpenings, setLiveOpenings] = useState<Opening[]>([]);
   const [previewRoomId, setPreviewRoomId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -36,9 +38,10 @@ export default function PalacePage() {
     }
   }, [palace]);
 
-  const onRoomsChange = useCallback((rs: Room[], ls: Level[]) => {
+  const onRoomsChange = useCallback((rs: Room[], ls: Level[], os: Opening[]) => {
     setLiveRooms(rs);
     setLiveLevels(ls);
+    setLiveOpenings(os);
   }, []);
 
   async function savePalace() {
@@ -107,7 +110,7 @@ export default function PalacePage() {
               Close
             </button>
           </div>
-          <Room3DPreview room={previewRoom} />
+          <Room3DPreview room={previewRoom} openings={liveOpenings.filter((o) => o.room_id === previewRoom.id)} />
           <div className="mt-3 flex gap-3 text-sm">
             <Link href={`/walk/${previewRoom.id}`} className="btn-primary px-3 py-1.5">
               Walk this room →
