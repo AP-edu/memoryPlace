@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json().catch(() => null);
   if (!body || typeof body !== "object") return NextResponse.json({ error: "Invalid request" }, { status: 400 });
-  const { title, palace_id, background, width, depth, height } = body as Record<string, unknown>;
+  const { title, palace_id, background, width, depth, height, metadata } = body as Record<string, unknown>;
   if (!title || !palace_id) {
     return NextResponse.json({ error: "Title and palace_id required" }, { status: 400 });
   }
@@ -40,6 +40,11 @@ export async function POST(req: NextRequest) {
   if (!palace) return NextResponse.json({ error: "Palace not found" }, { status: 404 });
   if (session.user.role !== "admin" && palace.user_id !== session.user.id) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  // Free-form jsonb (e.g. { kind: "hallway" }); must be a plain object.
+  if (metadata !== undefined && (metadata === null || typeof metadata !== "object" || Array.isArray(metadata))) {
+    return NextResponse.json({ error: "metadata must be an object" }, { status: 400 });
   }
 
   for (const n of [width, depth, height]) {
@@ -61,6 +66,7 @@ export async function POST(req: NextRequest) {
       width: isPosNum(width) ? width : 10,
       depth: isPosNum(depth) ? depth : 8,
       height: isPosNum(height) ? height : 3,
+      metadata: (metadata as Record<string, unknown> | undefined) ?? {},
       ...placement.updates,
     })
     .select()

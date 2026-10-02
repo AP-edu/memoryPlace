@@ -3,7 +3,12 @@ import * as THREE from "three";
 import type { Locus, Opening, Room } from "@/types/database";
 import {
   anchorFromPoint,
+  arrowPlacement,
   buildTourStops,
+  navArrows,
+  navStep,
+  navStops,
+  stopPose,
   cutawayWalls,
   easeInOut,
   exitThroughDoor,
@@ -203,5 +208,59 @@ describe("tour stops", () => {
       ["e", null, 2],
     ]);
     expect(new Set(stops.map((s) => s.key)).size).toBe(4);
+  });
+});
+
+describe("street-view navigation", () => {
+  const room = { id: "r", width: 6, depth: 4, height: 3 } as Room;
+  const loci = [locus("b", 1, { wall: "east", wall_offset: 0.5, height: 1.5 }), locus("a", 0, { wall: "north", wall_offset: 0.5, height: 1.5 })];
+  const door = { id: "d1", room_id: "r", wall: "west", wall_offset: 0.5, width: 0.2, width_m: 0.9, kind: "door", target_room_id: "lib", created_at: "" } as Opening;
+  const plain = { ...door, id: "d2", target_room_id: null, wall: "south" } as Opening;
+
+  it("lists loci in study order, then linked doors only", () => {
+    const stops = navStops(loci, [plain, door]);
+    expect(stops.map((s) => s.key)).toEqual(["l:a", "l:b", "d:d1"]);
+  });
+
+  it("steps from 'nowhere' to the first/last stop and clamps at the ends", () => {
+    expect(navStep(3, -1, 1)).toBe(0);
+    expect(navStep(3, -1, -1)).toBe(2);
+    expect(navStep(3, 2, 1)).toBe(2);
+    expect(navStep(3, 0, -1)).toBe(0);
+  });
+
+  it("points arrows at the next/prev stop and every linked door", () => {
+    const stops = navStops(loci, [door]);
+    const centre = { x: 3, z: 2 };
+    const fromStart = navArrows(centre, stops, -1, room);
+    expect(fromStart.map((a) => [a.stopIndex, a.role])).toEqual([
+      [0, "next"],
+      [2, "door"],
+    ]);
+    // Next = locus "a" on the north wall: chevron sits north of the player, heading ~0 (north).
+    const n = fromStart[0];
+    expect(n.z).toBeGreaterThan(centre.z);
+    expect(Math.abs(n.yaw)).toBeLessThan(0.3);
+    // The door is on the west wall: heading ~ -pi/2 (west).
+    expect(fromStart[1].yaw).toBeCloseTo(-Math.PI / 2, 1);
+    const atA = navArrows(stopPose(stops[0], room), stops, 0, room);
+    expect(atA.map((a) => [a.stopIndex, a.role])).toEqual([
+      [1, "next"],
+      [2, "door"],
+    ]);
+  });
+
+  it("stands just inside a door looking out through it", () => {
+    const stops = navStops([], [door]);
+    const p = stopPose(stops[0], room);
+    expect(p.x).toBeCloseTo(1.4);
+    expect(p.z).toBeCloseTo(2);
+    expect(p.yaw).toBeCloseTo(-Math.PI / 2); // facing west, out of the room
+  });
+
+  it("places chevrons partway to a close target", () => {
+    const a = arrowPlacement({ x: 0, z: 0 }, { x: 1, z: 0 });
+    expect(a.x).toBeCloseTo(0.7);
+    expect(a.yaw).toBeCloseTo(Math.PI / 2);
   });
 });

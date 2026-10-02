@@ -1,23 +1,25 @@
 "use client";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { Level, Opening, OpeningKind, Palace, Room } from "@/types/database";
 import { DEFAULT_OPENING_WIDTH_M, openingWidthM, wallLength } from "@/lib/geometry";
 import {
+  adjacentRooms,
   autoLinks,
   findLinkTarget,
   findPartner,
   fmtM,
   gridLines,
-  hitWall,
   moveRect,
   overlapsAny,
   planOpening,
   reconcileLinks,
-  rectFromDrag,
-  resizeRect,
   roomRect,
+  snapDraw,
+  snapMove,
+  snapResize,
   wallSeg,
+  type SnapGuides,
   type Handle,
   type LinkableOpening,
   type OpeningPlan,
@@ -26,19 +28,28 @@ import {
   type Rect,
 } from "@/lib/grid";
 import type { EditorBackend, LevelPatch, OpeningPatch, RoomPatch } from "./backend";
+import { HALLWAY_METADATA, HALLWAY_WIDTH_M, isHallway, planHallway, sharedStretch } from "@/lib/hallway";
 
 // Lightweight 2D grid editor (SVG). Level coordinates are metres; the SVG
 // viewBox is in metres too with svg-y = -z, so north (+z) is at the TOP.
 // State is local and optimistic; changes are debounced and persisted through
 // the EditorBackend (HTTP in the app, in-memory in the dev demo).
 
-type Tool = "select" | "room" | "door" | "archway";
+type Tool = "select" | "room" | "connect";
+/** What the "Connect rooms" chooser creates. Archway (open gap) is the plain default. */
+type ConnectKind = "archway" | "door" | "hallway" | "hallway-door";
+interface Chooser {
+  a: string;
+  b: string;
+  /** World coordinate along the shared wall where the opening goes (contextual "+" badge). */
+  at?: number;
+}
 type Selection = { type: "room"; id: string } | { type: "opening"; id: string } | null;
 type Drag =
   | { kind: "pan"; sx: number; sy: number; cx: number; cz: number }
   | { kind: "draw"; a: Pt; b: Pt }
-  | { kind: "move"; id: string; start: Pt; orig: Rect; rect: Rect }
-  | { kind: "resize"; id: string; handle: Handle; orig: Rect; rect: Rect };
+  | { kind: "move"; id: string; start: Pt; orig: Rect; rect: Rect; guides: SnapGuides }
+  | { kind: "resize"; id: string; handle: Handle; orig: Rect; rect: Rect; guides: SnapGuides };
 interface View {
   cx: number;
   cz: number;
@@ -61,7 +72,23 @@ export const ROOM_COLORS: Array<{ value: string | null; name: string }> = [
   { value: "#a78bfa", name: "Violet" },
   { value: "#3ddc97", name: "Mint" },
 ];
-const SNAP_CHOICES = [0.1, 0.25, 0.5, 1];
+// Keep it simple: 1 m by default, 0.5 m for finer work.
+const SNAP_CHOICES = [1, 0.5];
+const DEFAULT_SNAP = 1;
+/** Standard storey: rooms are 3 m tall and each level sits idx * 3 m up unless changed under Advanced. */
+export const STANDARD_HEIGHT_M = 3;
+/** Magnetic pull towards other rooms' edges, in screen pixels. */
+const MAGNET_PX = 12;
+const snapKey = (palaceId: string) => `mp-snap:${palaceId}`;
+const subscribeNoop = () => () => undefined;
+function readStoredSnap(palaceId: string): number | null {
+  try {
+    const v = Number(localStorage.getItem(snapKey(palaceId)));
+    return SNAP_CHOICES.includes(v) ? v : null;
+  } catch {
+    return null;
+  }
+}
 
 const byIdx = (a: Level, b: Level) => a.idx - b.idx || a.created_at.localeCompare(b.created_at);
 const isTemp = (id: string) => id.startsWith("tmp-");
@@ -116,12 +143,21 @@ export function GridEditor({
   const [levels, setLevels] = useState<Level[]>(() => [...initialLevels].sort(byIdx));
   const [rooms, setRooms] = useState<Room[]>(initialRooms);
   const [openings, setOpenings] = useState<Opening[]>(initialOpenings);
-  const [gridSnap, setGridSnap] = useState<number>(palace.grid_snap > 0 ? palace.grid_snap : 0.5);
+  // The stored palace.grid_snap defaults to 0.5 in the DB, so an explicit
+  // choice is remembered per palace in localStorage; otherwise 1 m.
+  const [chosenSnap, setGridSnap] = useState<number | null>(null);
+  const storedSnap = useSyncExternalStore(
+    subscribeNoop,
+    () => readStoredSnap(palace.id),
+    () => null
+  );
+  const gridSnap = chosenSnap ?? storedSnap ?? DEFAULT_SNAP;
   const [activeLevelId, setActiveLevelId] = useState<string | null>(() => [...initialLevels].sort(byIdx)[0]?.id ?? null);
   const [tool, setTool] = useState<Tool>("select");
   const [selection, setSelection] = useState<Selection>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
-  const [hover, setHover] = useState<OpeningPlan | null>(null);
+  const [connectFirst, setConnectFirst] = useState<string | null>(null);
+  const [chooser, setChooser] = useState<Chooser | null>(null);
   const [cursor, setCursor] = useState<Pt | null>(null);
   const [size, setSize] = useState({ w: 900, h: 560 });
   const [view, setView] = useState<View>(() => {
@@ -144,7 +180,7 @@ export function GridEditor({
   const firstLevelId = levels[0]?.id ?? null;
   const levelOf = useCallback((r: Room) => r.level_id ?? firstLevelId, [firstLevelId]);
   const activeLevel = levels.find((l) => l.id === activeLevelId) ?? levels[0] ?? null;
-  const minSize = Math.max(gridSnap, 1);
+  const minSize = 1;
 
   // ------------------------------------------------------------ effects
   useEffect(() => {
@@ -405,17 +441,17 @@ export function GridEditor({
     return true;
   }
 
-  function createRoom(rect: Rect) {
-    if (!activeLevel) return;
+  function createRoom(rect: Rect, opts: { title?: string; metadata?: Record<string, unknown>; select?: boolean } = {}): Room | null {
+    if (!activeLevel) return null;
     const tmp = `tmp-room-${++seq.current}`;
-    const title = `Room ${rooms.filter((r) => palace.id === r.palace_id).length + 1}`;
+    const title = opts.title ?? `Room ${rooms.filter((r) => palace.id === r.palace_id && !isHallway(r)).length + 1}`;
     const room: Room = {
       id: tmp,
       palace_id: palace.id,
       user_id: "",
       title,
       background: null,
-      metadata: {},
+      metadata: opts.metadata ?? {},
       width: rect.w,
       depth: rect.d,
       height: activeLevel.default_height,
@@ -427,7 +463,7 @@ export function GridEditor({
       created_at: new Date().toISOString(),
     };
     setRooms((rs) => [...rs, room]);
-    setSelection({ type: "room", id: tmp });
+    if (opts.select !== false) setSelection({ type: "room", id: tmp });
     const p = (async () => {
       const saved = await track(
         backend.createRoom({
@@ -439,6 +475,7 @@ export function GridEditor({
           width: rect.w,
           depth: rect.d,
           height: activeLevel.default_height,
+          ...(opts.metadata ? { metadata: opts.metadata } : {}),
         })
       );
       idMap.current.set(tmp, saved.id);
@@ -459,6 +496,7 @@ export function GridEditor({
       return null;
     });
     creating.current.set(tmp, p);
+    return room;
   }
 
   function deleteRoom(id: string) {
@@ -515,12 +553,12 @@ export function GridEditor({
     persistOpening(o);
   }
 
-  function placeOpening(plan: OpeningPlan, kind: OpeningKind) {
-    const room = roomById.get(plan.roomId);
+  function placeOpening(plan: OpeningPlan, kind: OpeningKind, lookup: Map<string, Room> = roomById, quiet = false) {
+    const room = lookup.get(plan.roomId);
     if (!room) return;
     const now = new Date().toISOString();
     const mk = (id: string, roomId: string, wall: Opening["wall"], offset: number, target: string | null): Opening => {
-      const r = roomById.get(roomId)!;
+      const r = lookup.get(roomId)!;
       return {
         id,
         room_id: roomId,
@@ -539,7 +577,78 @@ export function GridEditor({
     setSelection({ type: "opening", id: a.id });
     persistOpening(a);
     if (b) persistOpening(b);
-    if (plan.link) setNotice(`Linked ${kind} to "${roomById.get(plan.link.roomId)?.title ?? "neighbour"}"`);
+    if (plan.link && !quiet) setNotice(`Linked ${kind === "door" ? "doorway" : kind} to "${lookup.get(plan.link.roomId)?.title ?? "neighbour"}"`);
+  }
+
+  // ------------------------------------------------------------ connections
+  /** Is there already a linked opening between rooms a and b? */
+  const linkedBetween = (a: string, b: string) => openings.some((o) => o.room_id === a && o.target_room_id === b);
+
+  /** Doorway / archway on the wall two touching rooms share (at `at`, else the middle of the shared stretch). */
+  function connectDirect(a: string, b: string, kind: OpeningKind, at?: number): boolean {
+    const ra = roomById.get(a);
+    if (!ra) return false;
+    const same = placementRooms(visibleRooms);
+    const adj = adjacentRooms(a, same).filter((x) => x.roomId === b).sort((p, q) => q.shared.to - q.shared.from - (p.shared.to - p.shared.from))[0];
+    if (!adj) return false;
+    const seg = wallSeg(roomRect(ra), adj.shared.wallA);
+    const mid = at ?? (adj.shared.from + adj.shared.to) / 2;
+    const plan = planOpening(same, a, adj.shared.wallA, mid - seg.from, Math.min(DEFAULT_OPENING_WIDTH_M[kind], adj.shared.to - adj.shared.from), at === undefined ? 0 : gridSnap);
+    if (!plan?.link) return false;
+    placeOpening(plan, kind);
+    return true;
+  }
+
+  /** Corridor room(s) (metadata.kind = "hallway") between two rooms that don't touch, linked at both ends. */
+  function connectHallway(a: string, b: string, endKind: OpeningKind): boolean {
+    const ra = roomById.get(a);
+    const rb = roomById.get(b);
+    if (!ra || !rb || !activeLevel) return false;
+    const others = visibleRooms.filter((r) => r.id !== a && r.id !== b).map(roomRect);
+    const plan = planHallway(roomRect(ra), roomRect(rb), others, { width: HALLWAY_WIDTH_M, step: gridSnap });
+    if (!plan) return false;
+    const n = rooms.filter(isHallway).length;
+    const segRooms = plan.segments.map((rect, i) =>
+      createRoom(rect, { title: `Hallway ${n + i + 1}`, metadata: { ...HALLWAY_METADATA }, select: false })
+    );
+    if (segRooms.some((r) => !r)) return false;
+    const chain: Room[] = [ra, ...(segRooms as Room[]), rb];
+    const lookup = new Map(roomById);
+    chain.forEach((r) => lookup.set(r.id, r));
+    const placed = [...visibleRooms, ...(segRooms as Room[])].map((r) => ({ id: r.id, rect: roomRect(r) }));
+    for (let i = 0; i + 1 < chain.length; i++) {
+      const p = chain[i];
+      const q = chain[i + 1];
+      const sw = sharedStretch(roomRect(p), roomRect(q));
+      if (!sw) continue;
+      const end = i === 0 || i === chain.length - 2;
+      const kind: OpeningKind = end ? endKind : "archway";
+      // Ends get a standard doorway/archway; the bend between two corridor
+      // pieces is left fully open.
+      const width = end ? DEFAULT_OPENING_WIDTH_M[kind] : Math.min(HALLWAY_WIDTH_M, sw.to - sw.from);
+      const seg = wallSeg(roomRect(p), sw.wallA);
+      const op = planOpening(placed, p.id, sw.wallA, (sw.from + sw.to) / 2 - seg.from, width, 0);
+      if (op?.link) placeOpening(op, kind, lookup, true);
+    }
+    setSelection({ type: "room", id: (segRooms[0] as Room).id });
+    setNotice(`Hallway added (${fmtM(plan.length)}) between "${ra.title}" and "${rb.title}"`);
+    return true;
+  }
+
+  function connect(kind: ConnectKind) {
+    if (!chooser) return;
+    const { a, b, at } = chooser;
+    const ok = kind === "hallway" || kind === "hallway-door" ? connectHallway(a, b, kind === "hallway" ? "archway" : "door") : connectDirect(a, b, kind, at);
+    if (!ok) setNotice(kind.startsWith("hallway") ? "No free straight or L-shaped path for a hallway. Move a room and try again." : "Those rooms don't share a wall.");
+    setChooser(null);
+    setConnectFirst(null);
+    setTool("select");
+  }
+
+  /** Start the chooser for a pair of rooms. */
+  function openChooser(a: string, b: string, at?: number) {
+    setChooser({ a, b, at });
+    setConnectFirst(null);
   }
 
   function deleteOpening(id: string) {
@@ -601,8 +710,9 @@ export function GridEditor({
           palace_id: palace.id,
           name: top ? `Level ${levels.length}` : "Ground",
           idx: top ? top.idx + 1 : 0,
-          elevation: top ? top.elevation + top.default_height : 0,
-          default_height: 3,
+          // Standard storeys: level n sits n * 3 m up (adjustable under Advanced).
+          elevation: (top ? top.idx + 1 : 0) * STANDARD_HEIGHT_M,
+          default_height: STANDARD_HEIGHT_M,
         })
       );
       setLevels((ls) => [...ls, level].sort(byIdx));
@@ -659,6 +769,11 @@ export function GridEditor({
 
   function changeSnap(step: number) {
     setGridSnap(step);
+    try {
+      localStorage.setItem(snapKey(palace.id), String(step));
+    } catch {
+      // ignore
+    }
     void track(backend.updatePalace(palace.id, { grid_snap: step })).catch(() => undefined);
   }
 
@@ -673,16 +788,9 @@ export function GridEditor({
     };
   }
 
-  function planAt(p: Pt, kind: OpeningKind): OpeningPlan | null {
-    const tol = 12 / view.ppm;
-    let best: { room: Room; along: number; wall: Opening["wall"]; distance: number } | null = null;
-    for (const r of visibleRooms) {
-      const hit = hitWall(p, roomRect(r), tol);
-      if (hit && (!best || hit.distance < best.distance)) best = { room: r, along: hit.along, wall: hit.wall, distance: hit.distance };
-    }
-    if (!best) return null;
-    return planOpening(placementRooms(), best.room.id, best.wall, best.along, DEFAULT_OPENING_WIDTH_M[kind], gridSnap);
-  }
+  /** Magnetic snap distance in metres (about MAGNET_PX on screen, never more than 0.45 m). */
+  const magnet = Math.min(0.45, MAGNET_PX / view.ppm);
+  const NO_GUIDES: SnapGuides = { x: [], z: [] };
 
   function onPointerDown(e: React.PointerEvent<SVGSVGElement>) {
     containerRef.current?.focus({ preventScroll: true });
@@ -702,16 +810,23 @@ export function GridEditor({
       setDrag({ kind: "draw", a: p, b: p });
       return;
     }
-    if (tool === "door" || tool === "archway") {
-      const plan = planAt(p, tool);
-      if (plan) placeOpening(plan, tool);
-      else setNotice("Click on a room wall to place it.");
+    if (tool === "connect") {
+      const id = target.closest("[data-room-id]")?.getAttribute("data-room-id");
+      if (!id) {
+        setConnectFirst(null);
+        startPan();
+        return;
+      }
+      if (!connectFirst || connectFirst === id) {
+        setConnectFirst(id);
+        setSelection({ type: "room", id });
+      } else openChooser(connectFirst, id);
       return;
     }
     const handle = target.closest("[data-handle]")?.getAttribute("data-handle") as Handle | null | undefined;
     if (handle && selectedRoom) {
       const orig = roomRect(selectedRoom);
-      setDrag({ kind: "resize", id: selectedRoom.id, handle, orig, rect: orig });
+      setDrag({ kind: "resize", id: selectedRoom.id, handle, orig, rect: orig, guides: NO_GUIDES });
       return;
     }
     const openingId = target.closest("[data-opening-id]")?.getAttribute("data-opening-id");
@@ -724,7 +839,7 @@ export function GridEditor({
     if (room) {
       setSelection({ type: "room", id: room.id });
       const orig = roomRect(room);
-      setDrag({ kind: "move", id: room.id, start: p, orig, rect: orig });
+      setDrag({ kind: "move", id: room.id, start: p, orig, rect: orig, guides: NO_GUIDES });
       return;
     }
     setSelection(null);
@@ -734,10 +849,7 @@ export function GridEditor({
   function onPointerMove(e: React.PointerEvent<SVGSVGElement>) {
     const p = toWorld(e);
     setCursor(p);
-    if (!drag) {
-      if (tool === "door" || tool === "archway") setHover(planAt(p, tool));
-      return;
-    }
+    if (!drag) return;
     switch (drag.kind) {
       case "pan":
         setView((v) => ({ ...v, cx: drag.cx - (e.clientX - drag.sx) / v.ppm, cz: drag.cz + (e.clientY - drag.sy) / v.ppm }));
@@ -745,12 +857,20 @@ export function GridEditor({
       case "draw":
         setDrag({ ...drag, b: p });
         break;
-      case "move":
-        setDrag({ ...drag, rect: moveRect(drag.orig, p.x - drag.start.x, p.z - drag.start.z, gridSnap) });
+      case "move": {
+        const room = roomById.get(drag.id);
+        const others = otherRects(drag.id, room ? levelOf(room) : null);
+        const r = snapMove(drag.orig, p.x - drag.start.x, p.z - drag.start.z, gridSnap, others, magnet);
+        setDrag({ ...drag, rect: r.rect, guides: r.guides });
         break;
-      case "resize":
-        setDrag({ ...drag, rect: resizeRect(drag.orig, drag.handle, p, gridSnap, minSize) });
+      }
+      case "resize": {
+        const room = roomById.get(drag.id);
+        const others = otherRects(drag.id, room ? levelOf(room) : null);
+        const r = snapResize(drag.orig, drag.handle, p, gridSnap, minSize, others, magnet);
+        setDrag({ ...drag, rect: r.rect, guides: r.guides });
         break;
+      }
     }
   }
 
@@ -760,7 +880,7 @@ export function GridEditor({
     setDrag(null);
     if (!d) return;
     if (d.kind === "draw") {
-      const rect = rectFromDrag(d.a, d.b, gridSnap, minSize);
+      const { rect } = snapDraw(d.a, d.b, gridSnap, minSize, otherRects(null, activeLevel?.id ?? null), magnet);
       if (!rect) return;
       if (overlapsAny(rect, otherRects(null, activeLevel?.id ?? null))) {
         setNotice("Rooms can't overlap — draw it in free space.");
@@ -781,10 +901,11 @@ export function GridEditor({
     if (key === "Escape") {
       e.preventDefault();
       if (drag) setDrag(null);
+      else if (chooser) setChooser(null);
+      else if (connectFirst) setConnectFirst(null);
       else {
         setTool("select");
         setSelection(null);
-        setHover(null);
       }
       return;
     }
@@ -810,12 +931,9 @@ export function GridEditor({
       }
       return;
     }
-    const shortcuts: Record<string, Tool> = { v: "select", r: "room", d: "door", a: "archway" };
+    const shortcuts: Record<string, Tool> = { v: "select", r: "room", c: "connect" };
     const t = shortcuts[key.toLowerCase()];
-    if (t && !e.metaKey && !e.ctrlKey && !e.altKey) {
-      setTool(t);
-      setHover(null);
-    }
+    if (t && !e.metaKey && !e.ctrlKey && !e.altKey) pickTool(t);
   }
 
   function zoom(factor: number) {
@@ -836,13 +954,70 @@ export function GridEditor({
   const zLines = gridLines(-(vy + vh), -vy, minor);
   const isMajor = (v: number) => Math.abs(v / major - Math.round(v / major)) < 1e-6;
 
-  const drawRect = drag?.kind === "draw" ? rectFromDrag(drag.a, drag.b, gridSnap, minSize) : null;
+  const drawSnap = drag?.kind === "draw" ? snapDraw(drag.a, drag.b, gridSnap, minSize, otherRects(null, activeLevel?.id ?? null), magnet) : null;
+  const drawRect = drawSnap?.rect ?? null;
+  const guides: SnapGuides = drawSnap?.guides ?? (drag && (drag.kind === "move" || drag.kind === "resize") ? drag.guides : NO_GUIDES);
   const drawInvalid = drawRect ? overlapsAny(drawRect, otherRects(null, activeLevel?.id ?? null)) : false;
   const dragRect = drag && (drag.kind === "move" || drag.kind === "resize") ? drag.rect : null;
   const dragRoom = drag && (drag.kind === "move" || drag.kind === "resize") ? roomById.get(drag.id) : undefined;
   const dragInvalid = dragRoom && dragRect ? overlapsAny(dragRect, otherRects(dragRoom.id, levelOf(dragRoom))) : false;
   const dimsRect = drawRect ?? dragRect;
   const dimsInvalid = drawRect ? drawInvalid : dragInvalid;
+
+  /** Quarter-circle door swing (cubic approximation), hinged at the opening's start, opening into the room. */
+  function doorSwing(o: Opening, rect: Rect, room: Room): string {
+    const s = wallSeg(rect, o.wall);
+    const w = openingWidthM(o, room);
+    const c = s.from + o.wall_offset * (s.to - s.from);
+    const inward: Pt = o.wall === "north" ? { x: 0, z: -1 } : o.wall === "south" ? { x: 0, z: 1 } : o.wall === "east" ? { x: -1, z: 0 } : { x: 1, z: 0 };
+    const at = (v: number): Pt => (s.axis === "x" ? { x: v, z: s.fixed } : { x: s.fixed, z: v });
+    const hinge = at(c - w / 2);
+    const closed = at(c + w / 2);
+    const open = { x: hinge.x + inward.x * w, z: hinge.z + inward.z * w };
+    const k = 0.5523;
+    const c1 = { x: closed.x + inward.x * w * k, z: closed.z + inward.z * w * k };
+    const c2 = { x: open.x + (closed.x - hinge.x) * k, z: open.z + (closed.z - hinge.z) * k };
+    const P = (p: Pt) => `${p.x} ${-p.z}`;
+    return `M ${P(hinge)} L ${P(open)} M ${P(closed)} C ${P(c1)} ${P(c2)} ${P(open)}`;
+  }
+
+  /** World -> pixel position inside the canvas (for HTML overlays). */
+  const toScreen = (p: Pt) => ({ left: (p.x - vx) * view.ppm, top: (-p.z - vy) * view.ppm });
+
+  /** Unlinked neighbours of the selected room that share a wall: contextual "+" connect badges. */
+  const connectBadges = (() => {
+    const base = tool === "connect" ? (connectFirst ? roomById.get(connectFirst) : null) : selectedRoom;
+    if (!base || drag || chooser || !visibleIds.has(base.id)) return [];
+    const seen = new Set<string>();
+    const out: Array<{ a: string; b: string; at: number; pos: Pt; title: string }> = [];
+    for (const adj of adjacentRooms(base.id, placementRooms(visibleRooms)).sort((p, q) => q.shared.to - q.shared.from - (p.shared.to - p.shared.from))) {
+      if (seen.has(adj.roomId) || linkedBetween(base.id, adj.roomId)) continue;
+      seen.add(adj.roomId);
+      const seg = wallSeg(roomRect(base), adj.shared.wallA);
+      const at = (adj.shared.from + adj.shared.to) / 2;
+      const pos = seg.axis === "x" ? { x: at, z: seg.fixed } : { x: seg.fixed, z: at };
+      out.push({ a: base.id, b: adj.roomId, at, pos, title: roomById.get(adj.roomId)?.title ?? "room" });
+    }
+    return out;
+  })();
+
+  const chooserInfo = (() => {
+    if (!chooser) return null;
+    const ra = roomById.get(chooser.a);
+    const rb = roomById.get(chooser.b);
+    if (!ra || !rb) return null;
+    const adjacent = adjacentRooms(ra.id, placementRooms(visibleRooms)).some((x) => x.roomId === rb.id);
+    const others = visibleRooms.filter((r) => r.id !== ra.id && r.id !== rb.id).map(roomRect);
+    const hall = adjacent ? null : planHallway(roomRect(ra), roomRect(rb), others, { width: HALLWAY_WIDTH_M, step: gridSnap });
+    const A = roomRect(ra);
+    const B = roomRect(rb);
+    let pos: Pt = { x: (A.x + A.w / 2 + B.x + B.w / 2) / 2, z: (A.z + A.d / 2 + B.z + B.d / 2) / 2 };
+    if (adjacent && chooser.at !== undefined) {
+      const sw = sharedStretch(A, B);
+      if (sw) pos = wallSeg(A, sw.wallA).axis === "x" ? { x: chooser.at, z: wallSeg(A, sw.wallA).fixed } : { x: wallSeg(A, sw.wallA).fixed, z: chooser.at };
+    }
+    return { ra, rb, adjacent, hall, pos, linked: linkedBetween(ra.id, rb.id) };
+  })();
 
   function openingSegment(o: Opening, rect: Rect, room: Room) {
     const s = wallSeg(rect, o.wall);
@@ -860,16 +1035,21 @@ export function GridEditor({
         ? HANDLE_CURSOR[drag.handle]
         : tool === "room"
           ? "crosshair"
-          : tool === "door" || tool === "archway"
-            ? "copy"
+          : tool === "connect"
+            ? "pointer"
             : "default";
+
+  function pickTool(t: Tool) {
+    setTool(t);
+    setConnectFirst(t === "connect" && selectedRoom ? selectedRoom.id : null);
+    setChooser(null);
+  }
 
   const toolBtn = (t: Tool, label: string, hint: string) => (
     <button
       key={t}
       onClick={() => {
-        setTool(t);
-        setHover(null);
+        pickTool(t);
         containerRef.current?.focus({ preventScroll: true });
       }}
       title={hint}
@@ -901,8 +1081,7 @@ export function GridEditor({
         <div className="mb-2 flex flex-wrap items-center gap-2">
           {toolBtn("select", "Select", "Select / move / resize (V)")}
           {toolBtn("room", "Draw room", "Drag a rectangle to draw a room (R)")}
-          {toolBtn("door", "Door", "Click a wall to place a door (D)")}
-          {toolBtn("archway", "Archway", "Click a wall to place an archway (A)")}
+          {toolBtn("connect", "Connect rooms", "Click one room, then another, to add an archway, doorway or hallway (C)")}
           <span className="mx-1 h-6 w-px bg-border" />
           <button onClick={() => zoom(1.25)} className="btn-ghost !px-2" aria-label="Zoom in">
             +
@@ -965,10 +1144,7 @@ export function GridEditor({
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
             onPointerCancel={() => setDrag(null)}
-            onPointerLeave={() => {
-              setCursor(null);
-              setHover(null);
-            }}
+            onPointerLeave={() => setCursor(null)}
             onContextMenu={(e) => e.preventDefault()}
             className="block touch-none select-none"
             style={{ cursor: cursorStyle }}
@@ -983,6 +1159,13 @@ export function GridEditor({
               ))}
             </g>
 
+            <defs>
+              <pattern id="mp-hallway-stripes" width={0.5} height={0.5} patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+                <rect width={0.5} height={0.5} fill="var(--card)" />
+                <rect width={0.18} height={0.5} fill="var(--primary)" fillOpacity={0.16} />
+              </pattern>
+            </defs>
+
             {/* level below, for alignment */}
             {ghostRooms.map((r) => (
               <rect key={`ghost-${r.id}`} x={r.pos_x} y={-(r.pos_z + r.depth)} width={r.width} height={r.depth} fill="none" stroke="var(--muted-foreground)" strokeDasharray="4 4" strokeWidth={1} vectorEffect="non-scaling-stroke" opacity={0.6} pointerEvents="none" />
@@ -993,6 +1176,8 @@ export function GridEditor({
               const rect = rectOf(r);
               const sel = selection?.type === "room" && selection.id === r.id;
               const invalid = dragRect && drag && "id" in drag && drag.id === r.id && dragInvalid;
+              const hall = isHallway(r);
+              const picked = tool === "connect" && (connectFirst === r.id || chooser?.a === r.id || chooser?.b === r.id);
               return (
                 <g key={r.id} data-room-id={r.id} style={{ cursor: tool === "select" ? "move" : undefined }}>
                   <rect
@@ -1000,21 +1185,38 @@ export function GridEditor({
                     y={-(rect.z + rect.d)}
                     width={rect.w}
                     height={rect.d}
-                    fill="var(--card)"
+                    fill={hall ? "url(#mp-hallway-stripes)" : "var(--card)"}
                     fillOpacity={0.95}
-                    stroke={invalid ? "var(--destructive)" : sel ? "var(--primary)" : "var(--muted-foreground)"}
-                    strokeWidth={sel ? 3 : 2}
+                    stroke={invalid ? "var(--destructive)" : sel || picked ? "var(--primary)" : "var(--muted-foreground)"}
+                    strokeWidth={sel || picked ? 3 : hall ? 1.5 : 2}
+                    strokeDasharray={hall && !sel ? "6 3" : undefined}
                     vectorEffect="non-scaling-stroke"
                   />
                   {r.background && (
                     <rect x={rect.x} y={-(rect.z + rect.d)} width={rect.w} height={rect.d} fill={r.background} fillOpacity={0.22} pointerEvents="none" />
                   )}
+                  {hall ? (
+                    <text
+                      x={rect.x + rect.w / 2}
+                      y={-(rect.z + rect.d / 2) + px(4)}
+                      textAnchor="middle"
+                      fontSize={px(11)}
+                      fontWeight={600}
+                      fill="var(--muted-foreground)"
+                      letterSpacing={px(1)}
+                      transform={rect.d > rect.w ? `rotate(-90 ${rect.x + rect.w / 2} ${-(rect.z + rect.d / 2)})` : undefined}
+                      pointerEvents="none"
+                    >
+                      HALLWAY
+                    </text>
+                  ) : (
                   <text x={rect.x + rect.w / 2} y={-(rect.z + rect.d / 2)} textAnchor="middle" fontSize={px(13)} fontWeight={600} fill="var(--foreground)" pointerEvents="none">
                     {r.title}
                   </text>
-                  <text x={rect.x + rect.w / 2} y={-(rect.z + rect.d / 2) + px(15)} textAnchor="middle" fontSize={px(11)} fill="var(--muted-foreground)" pointerEvents="none">
+                  )}
+                  {!hall && <text x={rect.x + rect.w / 2} y={-(rect.z + rect.d / 2) + px(15)} textAnchor="middle" fontSize={px(11)} fill="var(--muted-foreground)" pointerEvents="none">
                     {fmtM(rect.w)} × {fmtM(rect.d)}
-                  </text>
+                  </text>}
                 </g>
               );
             })}
@@ -1030,19 +1232,25 @@ export function GridEditor({
                 <g key={o.id} data-opening-id={o.id} style={{ cursor: "pointer" }}>
                   <line {...seg} stroke="var(--background)" strokeWidth={7} vectorEffect="non-scaling-stroke" />
                   <line {...seg} stroke={color} strokeWidth={sel ? 6 : 4} strokeDasharray={o.target_room_id ? undefined : "5 3"} strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+                  {o.kind === "door" && (!o.target_room_id || o.room_id < o.target_room_id) && (
+                    <path d={doorSwing(o, rectOf(room), room)} fill="none" stroke={color} strokeOpacity={0.7} strokeWidth={1.25} vectorEffect="non-scaling-stroke" pointerEvents="none" />
+                  )}
                   <line {...seg} stroke="transparent" strokeWidth={14} vectorEffect="non-scaling-stroke" />
                 </g>
               );
             })}
 
-            {/* opening placement preview */}
-            {hover && (tool === "door" || tool === "archway") && !drag && (() => {
-              const room = roomById.get(hover.roomId);
-              if (!room) return null;
-              const fake = { wall: hover.wall, wall_offset: hover.offset, width_m: hover.widthM } as Opening;
-              const seg = openingSegment(fake, roomRect(room), room);
-              return <line {...seg} stroke={hover.link ? "var(--primary)" : "var(--accent)"} strokeOpacity={0.6} strokeWidth={8} strokeLinecap="round" vectorEffect="non-scaling-stroke" pointerEvents="none" />;
-            })()}
+            {/* snap guides: an edge lined up with another room's edge (or the grid while snapping) */}
+            {(guides.x.length > 0 || guides.z.length > 0) && (
+              <g pointerEvents="none">
+                {guides.x.map((x) => (
+                  <line key={`gx${x}`} x1={x} x2={x} y1={vy} y2={vy + vh} stroke="var(--accent)" strokeWidth={1.5} strokeDasharray="6 4" vectorEffect="non-scaling-stroke" />
+                ))}
+                {guides.z.map((z) => (
+                  <line key={`gz${z}`} x1={vx} x2={vx + vw} y1={-z} y2={-z} stroke="var(--accent)" strokeWidth={1.5} strokeDasharray="6 4" vectorEffect="non-scaling-stroke" />
+                ))}
+              </g>
+            )}
 
             {/* draw preview */}
             {drawRect && (
@@ -1075,6 +1283,35 @@ export function GridEditor({
             )}
           </svg>
 
+          {connectBadges.map((b) => (
+            <button
+              key={`${b.a}-${b.b}`}
+              type="button"
+              onClick={() => openChooser(b.a, b.b, b.at)}
+              title={`Connect to ${b.title}`}
+              aria-label={`Connect to ${b.title}`}
+              className="absolute z-10 flex h-6 w-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-primary text-sm font-bold leading-none text-primary-foreground shadow ring-2 ring-background transition-transform hover:scale-110"
+              style={toScreen(b.pos)}
+            >
+              +
+            </button>
+          ))}
+          {chooserInfo && (
+            <ConnectChooser
+              info={chooserInfo}
+              style={(() => {
+                const sp = toScreen(chooserInfo.pos);
+                return { left: Math.min(Math.max(sp.left, 130), size.w - 130), top: Math.min(Math.max(sp.top, 20), size.h - 200) };
+              })()}
+              onPick={connect}
+              onCancel={() => setChooser(null)}
+            />
+          )}
+          {tool === "connect" && !chooser && (
+            <div className="pointer-events-none absolute bottom-9 left-1/2 -translate-x-1/2 rounded-md bg-card/95 px-3 py-1 text-xs shadow">
+              {connectFirst ? `Now click the room to connect "${roomById.get(connectFirst)?.title ?? ""}" to (or a + badge)` : "Click the first room to connect"}
+            </div>
+          )}
           <div className="pointer-events-none absolute right-3 top-3 flex flex-col items-center rounded-md bg-card/90 px-2 py-1 text-xs font-semibold shadow-sm">
             <span aria-hidden>▲</span>N
           </div>
@@ -1096,9 +1333,9 @@ export function GridEditor({
           </p>
         )}
         <p className="mt-2 text-xs text-muted-foreground">
-          Drag empty space (or Space/middle-drag) to pan, wheel to zoom. R draw · D door · A archway · V select · Arrows nudge
-          (Shift = 1 m) · Delete removes · Esc cancels. Doors on a wall shared by two rooms link automatically (solid); unlinked
-          openings are dashed.
+          R draw a room (edges snap to the grid and to nearby rooms) · C connect rooms · V select · Arrows nudge (Shift = 1 m) ·
+          Delete removes · Esc cancels. Drag empty space to pan, wheel to zoom. Select a room and use the + badges to connect it to
+          a touching room.
         </p>
       </div>
 
@@ -1133,6 +1370,20 @@ export function GridEditor({
             }}
             onDelete={() => deleteRoom(selectedRoom.id)}
             onPreview={onPreviewRoom ? () => onPreviewRoom(selectedRoom.id) : undefined}
+            neighbours={connectBadges.filter((b) => b.a === selectedRoom.id).map((b) => ({ id: b.b, title: b.title }))}
+            links={openings
+              .filter((o) => o.room_id === selectedRoom.id && o.target_room_id)
+              .map((o) => ({ id: o.id, kind: o.kind, title: roomById.get(o.target_room_id!)?.title ?? "room" }))}
+            onConnect={(id) => {
+              const b = connectBadges.find((x) => x.a === selectedRoom.id && x.b === id);
+              openChooser(selectedRoom.id, id, b?.at);
+            }}
+            onConnectOther={() => {
+              setTool("connect");
+              setConnectFirst(selectedRoom.id);
+              setChooser(null);
+              containerRef.current?.focus({ preventScroll: true });
+            }}
           />
         )}
 
@@ -1208,10 +1459,16 @@ function LevelPanel({
     <div className="card-base space-y-2 p-4">
       <h3 className="text-sm font-semibold">Level</h3>
       <input value={name} onChange={(e) => setName(e.target.value)} onBlur={apply} onKeyDown={(e) => e.key === "Enter" && apply()} className="input-base text-sm" aria-label="Level name" />
-      <div className="grid grid-cols-2 gap-2" onBlur={apply}>
-        <NumField label="Elevation (m)" value={elev} onChange={setElev} />
-        <NumField label="Room height (m)" value={height} onChange={setHeight} min={0.5} />
-      </div>
+      <p className="text-xs text-muted-foreground">
+        Standard storey: rooms {fmtM(level.default_height)} tall, floor at {fmtM(level.elevation)}.
+      </p>
+      <details className="group text-xs">
+        <summary className="cursor-pointer select-none text-muted-foreground hover:text-foreground">Advanced</summary>
+        <div className="mt-2 grid grid-cols-2 gap-2" onBlur={apply}>
+          <NumField label="Elevation (m)" value={elev} onChange={setElev} />
+          <NumField label="Room height (m)" value={height} onChange={setHeight} min={0.5} />
+        </div>
+      </details>
       <div className="flex flex-wrap gap-1.5 pt-1">
         <button onClick={() => onMove(1)} disabled={isLast} className="btn-ghost !px-2 !py-1 text-xs" title="Move this level up">
           ↑ Up
@@ -1235,6 +1492,10 @@ function RoomPanel({
   onTheme,
   onDelete,
   onPreview,
+  neighbours,
+  links,
+  onConnect,
+  onConnectOther,
 }: {
   room: Room;
   saved: boolean;
@@ -1243,6 +1504,12 @@ function RoomPanel({
   onTheme: (bg: string | null) => void;
   onDelete: () => void;
   onPreview?: () => void;
+  /** Touching rooms that aren't connected yet. */
+  neighbours: Array<{ id: string; title: string }>;
+  /** Existing linked openings from this room. */
+  links: Array<{ id: string; kind: OpeningKind; title: string }>;
+  onConnect: (roomId: string) => void;
+  onConnectOther: () => void;
 }) {
   const [title, setTitle] = useState(room.title);
   const [x, setX] = useState(String(room.pos_x));
@@ -1261,7 +1528,7 @@ function RoomPanel({
   };
   return (
     <div className="card-base space-y-2 p-4">
-      <h3 className="text-sm font-semibold">Room</h3>
+      <h3 className="text-sm font-semibold">{isHallway(room) ? "Hallway" : "Room"}</h3>
       <input
         value={title}
         onChange={(e) => {
@@ -1271,13 +1538,41 @@ function RoomPanel({
         className="input-base text-sm"
         aria-label="Room name"
       />
-      <div className="grid grid-cols-2 gap-2" onBlur={applyGeometry} onKeyDown={(e) => e.key === "Enter" && applyGeometry()}>
-        <NumField label="X (m)" value={x} onChange={setX} />
-        <NumField label="Z (m)" value={z} onChange={setZ} />
-        <NumField label="Width (m)" value={w} onChange={setW} min={0.5} />
-        <NumField label="Depth (m)" value={d} onChange={setD} min={0.5} />
-        <NumField label="Height (m)" value={h} onChange={setH} min={0.5} step={0.1} />
+      <p className="text-xs text-muted-foreground">
+        {fmtM(room.width)} × {fmtM(room.depth)} · drag the corners to resize
+      </p>
+      <div className="space-y-1.5 border-t border-border pt-2">
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Connections</h4>
+        {links.length > 0 && (
+          <ul className="space-y-0.5 text-xs">
+            {links.map((l) => (
+              <li key={l.id}>
+                {l.kind === "door" ? "Doorway" : "Archway"} → {l.title}
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="flex flex-wrap gap-1.5">
+          {neighbours.map((n) => (
+            <button key={n.id} type="button" onClick={() => onConnect(n.id)} className="btn-outline !px-2 !py-1 text-xs">
+              + Connect to {n.title}
+            </button>
+          ))}
+          <button type="button" onClick={onConnectOther} className="btn-ghost !px-2 !py-1 text-xs">
+            Connect to another room…
+          </button>
+        </div>
       </div>
+      <details className="group text-xs">
+        <summary className="cursor-pointer select-none text-muted-foreground hover:text-foreground">Advanced</summary>
+        <div className="mt-2 grid grid-cols-2 gap-2" onBlur={applyGeometry} onKeyDown={(e) => e.key === "Enter" && applyGeometry()}>
+          <NumField label="X (m)" value={x} onChange={setX} />
+          <NumField label="Z (m)" value={z} onChange={setZ} />
+          <NumField label="Width (m)" value={w} onChange={setW} min={0.5} />
+          <NumField label="Depth (m)" value={d} onChange={setD} min={0.5} />
+          <NumField label="Height (m)" value={h} onChange={setH} min={0.5} step={0.1} />
+        </div>
+      </details>
       {err && <p className="text-xs text-destructive">{err}</p>}
       <div className="flex gap-1.5">
         {ROOM_COLORS.map((t) => (
@@ -1342,15 +1637,15 @@ function OpeningPanel({
   };
   return (
     <div className="card-base space-y-2 p-4 text-sm">
-      <h3 className="font-semibold capitalize">{opening.kind}</h3>
+      <h3 className="font-semibold">{opening.kind === "door" ? "Doorway" : "Archway"}</h3>
       <p className="text-xs text-muted-foreground">
         {room?.title ?? "Room"} · {opening.wall} wall
         {target ? ` → ${target.title}` : " (not linked)"}
       </p>
       <div className="flex gap-1.5">
-        {(["door", "archway"] as const).map((k) => (
+        {(["archway", "door"] as const).map((k) => (
           <button key={k} onClick={() => onKind(k)} className={`rounded-md px-2.5 py-1 text-xs ${opening.kind === k ? "bg-primary text-primary-foreground" : "card-base"}`}>
-            {k}
+            {k === "door" ? "Doorway" : "Archway (open)"}
           </button>
         ))}
       </div>
@@ -1360,6 +1655,73 @@ function OpeningPanel({
       <p className="text-xs text-muted-foreground">Arrow keys slide it along the wall.</p>
       <button onClick={onDelete} className="btn-danger">
         Delete {target ? "(both sides)" : ""}
+      </button>
+    </div>
+  );
+}
+
+type ChooserInfo = { ra: Room; rb: Room; adjacent: boolean; hall: ReturnType<typeof planHallway>; linked: boolean };
+
+/** Small popover: how should two rooms be connected? Archway (plain open gap) is the default. */
+function ConnectChooser({
+  info,
+  style,
+  onPick,
+  onCancel,
+}: {
+  info: ChooserInfo;
+  style: React.CSSProperties;
+  onPick: (kind: ConnectKind) => void;
+  onCancel: () => void;
+}) {
+  const options: Array<{ kind: ConnectKind; label: string; hint: string }> = info.adjacent
+    ? [
+        { kind: "archway", label: "Archway", hint: "Open gap, no door" },
+        { kind: "door", label: "Doorway", hint: "Frame with a door" },
+      ]
+    : [
+        { kind: "hallway", label: "Hallway", hint: `${fmtM(HALLWAY_WIDTH_M)} corridor, open ends` },
+        { kind: "hallway-door", label: "Hallway + doorways", hint: "Corridor with a door at each end" },
+      ];
+  const blocked = !info.adjacent && !info.hall;
+  return (
+    <div
+      role="dialog"
+      aria-label={`Connect ${info.ra.title} and ${info.rb.title}`}
+      className="absolute z-20 w-60 -translate-x-1/2 rounded-lg border border-border bg-card p-3 text-sm shadow-lg"
+      style={style}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      <p className="mb-2 text-xs text-muted-foreground">
+        Connect <b className="text-foreground">{info.ra.title}</b> ↔ <b className="text-foreground">{info.rb.title}</b>
+        {info.linked ? " (already linked — adds another)" : ""}
+      </p>
+      {blocked ? (
+        <p className="mb-2 text-xs text-destructive">No free straight or L-shaped path for a hallway. Move a room and try again.</p>
+      ) : (
+        <div className="space-y-1.5">
+          {options.map((o, i) => (
+            <button
+              key={o.kind}
+              type="button"
+              autoFocus={i === 0}
+              onClick={() => onPick(o.kind)}
+              className={`flex w-full items-baseline justify-between rounded-md px-3 py-1.5 text-left ${i === 0 ? "bg-primary text-primary-foreground" : "card-base hover:border-primary/60"}`}
+            >
+              <span className="font-medium">{o.label}</span>
+              <span className={`text-[11px] ${i === 0 ? "opacity-90" : "text-muted-foreground"}`}>{o.hint}</span>
+            </button>
+          ))}
+          {!info.adjacent && info.hall && (
+            <p className="text-[11px] text-muted-foreground">
+              {info.hall.segments.length === 1 ? "Straight" : "L-shaped"} corridor, {fmtM(info.hall.length)} long.
+            </p>
+          )}
+          {info.adjacent && <p className="text-[11px] text-muted-foreground">These rooms touch, so no hallway is needed.</p>}
+        </div>
+      )}
+      <button type="button" onClick={onCancel} className="btn-ghost mt-2 !px-2 !py-1 text-xs">
+        Cancel (Esc)
       </button>
     </div>
   );

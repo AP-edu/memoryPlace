@@ -12,13 +12,13 @@ const Room3DEditor = dynamic(() => import("@/components/scene3d/Room3DEditor"), 
 const WalkView = dynamic(() => import("@/components/scene3d/WalkView"), { ssr: false });
 
 const T = "2026-10-01T12:00:00.000Z";
-const room = (id: string, title: string, w: number, d: number, bg: string | null): Room => ({
+const room = (id: string, title: string, w: number, d: number, bg: string | null, metadata: Record<string, unknown> = {}): Room => ({
   id,
   palace_id: "demo-palace",
   user_id: "demo",
   title,
   background: bg,
-  metadata: {},
+  metadata,
   width: w,
   depth: d,
   height: 3,
@@ -29,7 +29,12 @@ const room = (id: string, title: string, w: number, d: number, bg: string | null
   outline: null,
   created_at: T,
 });
-const ROOMS: Room[] = [room("r-hall", "Entrance hall", 6, 4, null), room("r-lib", "Library", 5, 7, "#4255ff")];
+const ROOMS: Room[] = [
+  room("r-hall", "Entrance hall", 6, 4, null),
+  room("r-lib", "Library", 5, 7, "#4255ff"),
+  // Auto-generated style corridor (metadata.kind = "hallway"), reached through the hall's north archway.
+  room("r-hw", "Hallway 1", 1.5, 5, null, { kind: "hallway" }),
+];
 const op = (id: string, roomId: string, wall: Opening["wall"], offset: number, widthM: number, target: string | null, kind: Opening["kind"] = "door"): Opening => ({
   id,
   room_id: roomId,
@@ -44,7 +49,8 @@ const op = (id: string, roomId: string, wall: Opening["wall"], offset: number, w
 const OPENINGS: Opening[] = [
   op("o-1", "r-hall", "east", 0.5, 0.9, "r-lib"),
   op("o-2", "r-lib", "west", 2 / 7, 0.9, "r-hall"),
-  op("o-3", "r-hall", "north", 0.3, 1.2, null, "archway"),
+  op("o-3", "r-hall", "north", 0.3, 1.2, "r-hw", "archway"),
+  op("o-6", "r-hw", "south", 0.5, 1.2, "r-hall", "archway"),
   op("o-4", "r-hall", "north", 0.75, 0.9, null),
   op("o-5", "r-lib", "north", 0.5, 1.2, null, "archway"),
 ];
@@ -89,6 +95,8 @@ const CARDS: Card[] = [
   card("c-4", "l-3", "Year the Berlin Wall fell?", "1989"),
   card("c-5", "l-4", "Largest ocean?", "Pacific"),
   card("c-6", "l-5", "Chemical symbol for gold?", "Au"),
+  card("c-7", "l-2", "Smallest prime?", "2"),
+  card("c-8", "l-5", "Boiling point of water at sea level?", "100 °C"),
 ];
 
 export function Room3DDemo() {

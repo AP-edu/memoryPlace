@@ -19,6 +19,8 @@ export interface NewRoom {
   width: number;
   depth: number;
   height: number;
+  /** Free-form room metadata (jsonb), e.g. { kind: "hallway" }. */
+  metadata?: Record<string, unknown>;
 }
 
 export interface NewOpening {

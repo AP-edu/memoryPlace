@@ -43,6 +43,13 @@ export default function Room3DEditor({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [hover, setHover] = useState<WallAnchor | null>(null);
+  /** Inline "add cards" form that opens right after a locus is placed. */
+  const [quick, setQuick] = useState<QuickCard | null>(null);
+  const cardCounts = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const c of cards) if (c.locus_id) m[c.locus_id] = (m[c.locus_id] ?? 0) + 1;
+    return m;
+  }, [cards]);
 
   // Optimistic anchor overrides, keyed to the locus object they were made
   // against: once the parent passes a fresh object for that id, the override
@@ -120,7 +127,12 @@ export default function Room3DEditor({
     }
     const a = anchorOf(e);
     const position = loci.reduce((m, l) => Math.max(m, l.position), -1) + 1;
+    const leftover = quick;
     void run(async () => {
+      // Placing the next locus keeps whatever was typed for the previous one.
+      if (leftover && leftover.front.trim()) {
+        await actions.createCard({ locus_id: leftover.locusId, front: leftover.front.trim(), back: leftover.back.trim() });
+      }
       const created = await actions.createLocus({
         room_id: room.id,
         label: `Locus ${loci.length + 1}`,
@@ -130,7 +142,8 @@ export default function Room3DEditor({
         position,
       });
       setSelectedId(created.id);
-      setTool("select");
+      // Stay in place mode and open the inline card form straight away.
+      setQuick({ locusId: created.id, label: created.label, front: "", back: "" });
     });
   }
 
@@ -153,6 +166,9 @@ export default function Room3DEditor({
   // Finish a drag wherever the pointer is released.
   useEffect(() => {
     if (!dragging) return;
+    // No accidental text selection while dragging a marker.
+    const prevSelect = document.body.style.userSelect;
+    document.body.style.userSelect = "none";
     const up = () => {
       const d = dragging;
       setDragging(null);
@@ -160,7 +176,10 @@ export default function Room3DEditor({
       if (d?.anchor && locus) commit(locus, d.anchor);
     };
     window.addEventListener("pointerup", up);
-    return () => window.removeEventListener("pointerup", up);
+    return () => {
+      window.removeEventListener("pointerup", up);
+      document.body.style.userSelect = prevSelect;
+    };
   }, [dragging, loci, commit]);
 
   // Keyboard nudges on the selected locus (←/→ along wall, ↑/↓ height).
@@ -199,7 +218,7 @@ export default function Room3DEditor({
 
   return (
     <div className={`grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px] ${className}`}>
-      <div className="relative overflow-hidden rounded-2xl border border-border bg-card" style={{ height }}>
+      <div className="relative select-none overflow-hidden rounded-2xl border border-border bg-card" style={{ height }}>
         <Canvas
           camera={{ position: toScene({ x: room.width / 2 + camDist * 0.35, y: camDist * 0.75, z: room.depth / 2 - camDist * 0.8 }), fov: 50 }}
           onPointerMissed={() => tool === "select" && !dragging && setSelectedId(null)}
@@ -218,6 +237,7 @@ export default function Room3DEditor({
             draggingId={dragging?.id}
             onMarkerDown={onMarkerDown}
             onMarkerClick={(_, e) => e.stopPropagation()}
+            cardCounts={cardCounts}
           />
           {tool === "place" && hover && !dragging && (
             <LocusMarkers
@@ -242,16 +262,31 @@ export default function Room3DEditor({
                 aria-pressed={tool === t}
                 className={`rounded-lg px-3 py-1.5 font-medium transition ${tool === t ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
               >
-                {t === "select" ? "Select / drag" : "+ Place locus"}
+                {t === "select" ? "Select / drag" : "+ Locus & cards"}
               </button>
             ))}
           </div>
           <p className="pointer-events-none rounded-lg bg-card/80 px-2 py-1 text-xs text-muted-foreground backdrop-blur">
             {tool === "place"
-              ? "Click a wall to drop a locus. Drag to orbit."
+              ? "Click a wall to drop a locus, then type its cards. Drag to orbit."
               : "Drag a marker along the walls · ←/→ slide · ↑/↓ height · drag empty space to orbit"}
           </p>
         </div>
+        {quick && loci.some((l) => l.id === quick.locusId) && (
+          <QuickCardForm
+            key={quick.locusId}
+            quick={quick}
+            count={cardCounts[quick.locusId] ?? 0}
+            number={ordered.findIndex((l) => l.id === quick.locusId) + 1}
+            onChange={setQuick}
+            onRename={(label) => {
+              const l = loci.find((x) => x.id === quick.locusId);
+              if (l && label.trim() && label !== l.label) commit(l, { label: label.trim() });
+            }}
+            onSave={(front, back) => run(() => actions.createCard({ locus_id: quick.locusId, front, back }))}
+            onClose={() => setQuick(null)}
+          />
+        )}
         {busy && <div className="absolute bottom-3 right-3 rounded-lg bg-card/90 px-2 py-1 text-xs text-muted-foreground">Saving…</div>}
       </div>
 
@@ -374,13 +409,13 @@ function LocusDetails({
           <span className="flex justify-between text-muted-foreground">
             Along wall <span className="tabular-nums text-foreground">{((locus.wall_offset ?? 0.5) * len).toFixed(1)} m</span>
           </span>
-          <input type="range" min={0} max={1} step={0.01} value={locus.wall_offset ?? 0.5} onChange={(e) => onPatch({ wall_offset: Number(e.target.value) })} className="w-full accent-[var(--color-primary)]" />
+          <input type="range" min={0} max={1} step={0.01} value={locus.wall_offset ?? 0.5} onChange={(e) => onPatch({ wall_offset: Number(e.target.value) })} className="w-full select-none accent-[var(--color-primary)]" />
         </label>
         <label className="col-span-2">
           <span className="flex justify-between text-muted-foreground">
             Height <span className="tabular-nums text-foreground">{(locus.height ?? 1.5).toFixed(2)} m</span>
           </span>
-          <input type="range" min={0.3} max={Math.max(0.3, room.height - 0.2)} step={0.05} value={locus.height ?? 1.5} onChange={(e) => onPatch({ height: Number(e.target.value) })} className="w-full accent-[var(--color-primary)]" />
+          <input type="range" min={0.3} max={Math.max(0.3, room.height - 0.2)} step={0.05} value={locus.height ?? 1.5} onChange={(e) => onPatch({ height: Number(e.target.value) })} className="w-full select-none accent-[var(--color-primary)]" />
         </label>
       </div>
 
@@ -438,5 +473,124 @@ function LocusDetails({
         Delete locus
       </button>
     </section>
+  );
+}
+
+interface QuickCard {
+  locusId: string;
+  label: string;
+  front: string;
+  back: string;
+}
+
+/**
+ * Bottom-of-canvas card form: Enter in the prompt jumps to the answer, Enter
+ * in the answer saves and clears for the next card, Esc closes.
+ */
+function QuickCardForm({
+  quick,
+  count,
+  number,
+  onChange,
+  onRename,
+  onSave,
+  onClose,
+}: {
+  quick: QuickCard;
+  count: number;
+  number: number;
+  onChange: (q: QuickCard) => void;
+  onRename: (label: string) => void;
+  onSave: (front: string, back: string) => Promise<void>;
+  onClose: () => void;
+}) {
+  const frontRef = useRef<HTMLInputElement>(null);
+  const backRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    frontRef.current?.focus();
+  }, []);
+  const save = async () => {
+    const front = quick.front.trim();
+    if (!front) return frontRef.current?.focus();
+    onChange({ ...quick, front: "", back: "" });
+    frontRef.current?.focus();
+    await onSave(front, quick.back.trim());
+  };
+  const done = async () => {
+    if (quick.front.trim()) await onSave(quick.front.trim(), quick.back.trim());
+    onClose();
+  };
+  const onKey = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") {
+      // Closing keeps a typed prompt rather than silently dropping it.
+      e.preventDefault();
+      e.stopPropagation();
+      void done();
+    }
+  };
+  return (
+    <div
+      role="dialog"
+      aria-label="Add flashcards to this locus"
+      className="absolute inset-x-3 bottom-3 z-10 rounded-xl border border-border bg-card/95 p-3 shadow-lg backdrop-blur"
+      onKeyDown={onKey}
+    >
+      <div className="mb-2 flex items-center gap-2 text-sm">
+        <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-accent text-xs font-bold text-accent-foreground">{number}</span>
+        <input
+          aria-label="Locus label"
+          className="input-base !w-44 !py-1 text-sm"
+          value={quick.label}
+          onChange={(e) => onChange({ ...quick, label: e.target.value })}
+          onBlur={() => onRename(quick.label)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              onRename(quick.label);
+              frontRef.current?.focus();
+            }
+          }}
+        />
+        <span className="text-xs text-muted-foreground">
+          {count} card{count === 1 ? "" : "s"} here · Enter saves and starts the next card
+        </span>
+        <button type="button" onClick={() => void done()} className="btn-ghost ml-auto !px-2 !py-1 text-xs">
+          Done (Esc)
+        </button>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <input
+          ref={frontRef}
+          aria-label="Card prompt"
+          placeholder="Prompt (front)"
+          className="input-base min-w-40 flex-1 !py-1.5 text-sm"
+          value={quick.front}
+          onChange={(e) => onChange({ ...quick, front: e.target.value })}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              if (quick.front.trim()) backRef.current?.focus();
+            }
+          }}
+        />
+        <input
+          ref={backRef}
+          aria-label="Card answer"
+          placeholder="Answer (back)"
+          className="input-base min-w-40 flex-1 !py-1.5 text-sm"
+          value={quick.back}
+          onChange={(e) => onChange({ ...quick, back: e.target.value })}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              void save();
+            }
+          }}
+        />
+        <button type="button" onClick={() => void save()} disabled={!quick.front.trim()} className="btn-primary !px-3 !py-1.5 text-sm">
+          Add card
+        </button>
+      </div>
+    </div>
   );
 }

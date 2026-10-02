@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useFrame, type ThreeEvent } from "@react-three/fiber";
+import * as THREE from "three";
 import { Html } from "@react-three/drei";
 import type { Card, Locus, Opening, Room } from "@/types/database";
 import { cardBack, cardFront } from "@/types/database";
@@ -21,6 +22,12 @@ import {
 } from "@/lib/walk";
 import {
   buildTourStops,
+  navArrows,
+  navStep,
+  navStops,
+  stopPose,
+  type NavArrow,
+  type NavStop,
   easeInOut,
   exitThroughDoor,
   inwardNormal,
@@ -162,6 +169,91 @@ function DoorSigns({ room, openings, roomTitles }: { room: Room; openings: Openi
   );
 }
 
+// Flat chevron lying on the floor, pointing along +y in shape space (= north
+// after laying it down); the group's yaw turns it toward its target.
+const CHEVRON = (() => {
+  const sh = new THREE.Shape();
+  sh.moveTo(0, 0.42);
+  sh.lineTo(0.36, 0.02);
+  sh.lineTo(0.22, -0.1);
+  sh.lineTo(0, 0.14);
+  sh.lineTo(-0.22, -0.1);
+  sh.lineTo(-0.36, 0.02);
+  sh.closePath();
+  return new THREE.ShapeGeometry(sh);
+})();
+
+const NAV_PITCH = -0.3;
+
+function NavChevrons({
+  arrows,
+  stops,
+  roomTitles,
+  colors,
+  onGo,
+}: {
+  arrows: NavArrow[];
+  stops: Array<NavStop<Locus>>;
+  roomTitles: Record<string, string>;
+  colors: { locus: string; door: string; locusActive: string };
+  onGo: (index: number) => void;
+}) {
+  const [hover, setHover] = useState<number | null>(null);
+  return (
+    <>
+      {arrows.map((a) => {
+        const s = stops[a.stopIndex];
+        const color = a.role === "door" ? colors.door : a.role === "next" ? colors.locus : colors.locus;
+        const label =
+          s.kind === "door"
+            ? `\u2192 ${roomTitles[s.targetRoomId] ?? "Next room"}`
+            : `${a.role === "prev" ? "Back" : "Next"} \u00b7 ${s.number}${s.locus.label ? ` ${s.locus.label}` : ""}`;
+        const hot = hover === a.stopIndex;
+        return (
+          <group key={a.stopIndex} position={toScene({ x: a.x, y: 0.03, z: a.z })} rotation={[0, -a.yaw, 0]}>
+            <mesh
+              geometry={CHEVRON}
+              rotation={[-Math.PI / 2, 0, 0]}
+              scale={hot ? 1.25 : 1}
+              onPointerOver={(e: ThreeEvent<PointerEvent>) => {
+                e.stopPropagation();
+                setHover(a.stopIndex);
+                document.body.style.cursor = "pointer";
+              }}
+              onPointerOut={() => {
+                setHover(null);
+                document.body.style.cursor = "";
+              }}
+              onClick={(e: ThreeEvent<MouseEvent>) => {
+                if (e.delta > 6) return; // that was a look-drag
+                e.stopPropagation();
+                document.body.style.cursor = "";
+                onGo(a.stopIndex);
+              }}
+            >
+              <meshBasicMaterial color={hot ? colors.locusActive : color} transparent opacity={a.role === "prev" ? 0.6 : 0.92} side={THREE.DoubleSide} />
+            </mesh>
+            {/* bigger invisible hit area */}
+            <mesh rotation={[-Math.PI / 2, 0, 0]} onClick={(e: ThreeEvent<MouseEvent>) => {
+              if (e.delta > 6) return;
+              e.stopPropagation();
+              onGo(a.stopIndex);
+            }}>
+              <circleGeometry args={[0.55, 20]} />
+              <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+            </mesh>
+            <Html center position={[0, 0.35, 0]} zIndexRange={[15, 0]} style={{ pointerEvents: "none" }}>
+              <div className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold shadow ${a.role === "door" ? "bg-accent text-accent-foreground" : "bg-card/90 text-foreground"} ${hot ? "ring-2 ring-ring" : ""}`}>
+                {label}
+              </div>
+            </Html>
+          </group>
+        );
+      })}
+    </>
+  );
+}
+
 function Joystick({ joyRef }: { joyRef: React.MutableRefObject<MoveInput> }) {
   const [knob, setKnob] = useState<{ x: number; y: number } | null>(null);
   const origin = useRef<{ x: number; y: number; id: number } | null>(null);
@@ -241,7 +333,8 @@ export default function WalkView({
   className = "h-dvh",
 }: WalkViewProps) {
   const colors = useSceneColors();
-  const poseRef = useRef<Pose>(spawn ?? spawnPose(room));
+  // Look slightly down (Street-View style) so the floor chevrons are in view.
+  const poseRef = useRef<Pose>({ ...(spawn ?? spawnPose(room)), pitch: NAV_PITCH });
   const inputRef = useRef<MoveInput>({ throttle: 0, strafe: 0 });
   const joyRef = useRef<MoveInput>({ throttle: 0, strafe: 0 });
   const lookRef = useRef({ yawDelta: 0, pitchDelta: 0 });
@@ -258,6 +351,48 @@ export default function WalkView({
 
   const items = useMemo(() => toWorldLoci(loci, room), [loci, room]);
   const stops = useMemo<Stop[]>(() => buildTourStops(loci, cards), [loci, cards]);
+
+  // ---------------------------------------------------------------- street-view navigation
+  // Stops = loci in study order, then linked doors. Floor chevrons point at the
+  // next/previous stop and at every linked door; click one (or ↑/→, ↓/←) to glide there.
+  const nav = useMemo(() => navStops(loci, openings), [loci, openings]);
+  const [navIndex, setNavIndex] = useState(-1);
+  const [arrows, setArrows] = useState<NavArrow[]>([]);
+  const goStop = useCallback(
+    (i: number) => {
+      const st = nav[i];
+      if (!st) return;
+      if (st.kind === "door" && i === navIndex) {
+        onExitDoor?.(st.opening); // already at this door: walk through
+        return;
+      }
+      setNavIndex(i);
+      glideRef.current = { from: { ...poseRef.current }, to: stopPose(st, room), t: 0 };
+    },
+    [nav, navIndex, room, onExitDoor]
+  );
+  const stepNav = useCallback(
+    (dir: 1 | -1) => {
+      const cur = nav[navIndex];
+      if (dir === 1 && cur?.kind === "door") return goStop(navIndex);
+      const i = navStep(nav.length, navIndex, dir);
+      if (i !== navIndex) goStop(i);
+    },
+    [nav, navIndex, goStop]
+  );
+  useEffect(() => {
+    const t = window.setInterval(() => {
+      if (glideRef.current) return setArrows((a) => (a.length ? [] : a));
+      const next = navArrows(poseRef.current, nav, navIndex, room);
+      setArrows((prev) => {
+        const same =
+          prev.length === next.length &&
+          prev.every((p, i) => p.stopIndex === next[i].stopIndex && p.role === next[i].role && Math.abs(p.x - next[i].x) < 0.05 && Math.abs(p.z - next[i].z) < 0.05);
+        return same ? prev : next;
+      });
+    }, 120);
+    return () => window.clearInterval(t);
+  }, [nav, navIndex, room]);
 
   // ---------------------------------------------------------------- tour
   const [tour, setTour] = useState<{ index: number; revealed: boolean; results: Record<string, boolean> } | null>(null);
@@ -328,21 +463,22 @@ export default function WalkView({
   }, [autoTour, stops.length, startTour]);
 
   // ---------------------------------------------------------------- input
-  const tourRef = useRef({ tour, stop, goto, grade, startTour });
+  const tourRef = useRef({ tour, stop, goto, grade, startTour, stepNav });
   useEffect(() => {
-    tourRef.current = { tour, stop, goto, grade, startTour };
-  }, [tour, stop, goto, grade, startTour]);
+    tourRef.current = { tour, stop, goto, grade, startTour, stepNav };
+  }, [tour, stop, goto, grade, startTour, stepNav]);
   useEffect(() => {
     const syncKeys = () => {
       const k = keysRef.current;
-      const fwd = (k.has("KeyW") || k.has("ArrowUp") ? 1 : 0) + (k.has("KeyS") || k.has("ArrowDown") ? -1 : 0);
-      const str = (k.has("KeyD") || k.has("ArrowRight") ? 1 : 0) + (k.has("KeyA") || k.has("ArrowLeft") ? -1 : 0);
+      // WASD walks freely; the arrow keys step between stops (see below).
+      const fwd = (k.has("KeyW") ? 1 : 0) + (k.has("KeyS") ? -1 : 0);
+      const str = (k.has("KeyD") ? 1 : 0) + (k.has("KeyA") ? -1 : 0);
       inputRef.current = { throttle: fwd, strafe: str };
     };
     const down = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
-      const { tour: tr, stop: st, goto: go, grade: gr, startTour: start } = tourRef.current;
+      const { tour: tr, stop: st, goto: go, grade: gr, startTour: start, stepNav: step } = tourRef.current;
       if (tr) {
         // Tour keys: Space/Enter reveal, ←/→ step, 1/2 grade, Esc leave.
         if (e.code === "Space" || e.code === "Enter") {
@@ -366,7 +502,17 @@ export default function WalkView({
         start();
         return;
       }
-      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"].includes(e.code)) e.preventDefault();
+      if (e.code === "ArrowUp" || e.code === "ArrowRight") {
+        e.preventDefault();
+        if (!e.repeat) step(1);
+        return;
+      }
+      if (e.code === "ArrowDown" || e.code === "ArrowLeft") {
+        e.preventDefault();
+        if (!e.repeat) step(-1);
+        return;
+      }
+      if (e.code === "Space") e.preventDefault();
       keysRef.current.add(e.code);
       syncKeys();
     };
@@ -457,6 +603,7 @@ export default function WalkView({
           <RoomShell room={room} openings={openings} colors={colors} />
           <LocusMarkers room={room} loci={loci} colors={colors} selectedId={stop?.locus.id ?? focused?.locus.id ?? null} showPath={!!tour} />
           <DoorSigns room={room} openings={openings} roomTitles={roomTitles} />
+          {!tour && <NavChevrons arrows={arrows} stops={nav} roomTitles={roomTitles} colors={colors} onGo={goStop} />}
           <PlayerRig
             room={room}
             openings={openings}
@@ -482,7 +629,7 @@ export default function WalkView({
               ? `Tour · stop ${tour.index + 1} of ${stops.length}`
               : outside
                 ? "Outside: walk back through a door"
-                : `${lociCount} loci · WASD / joystick + drag to look · T to tour`}
+                : `${lociCount} loci · click floor arrows or ↑/↓ to step · WASD walk · drag to look · T tour`}
           </p>
         </div>
         <div className="pointer-events-auto flex flex-wrap gap-2">
@@ -509,8 +656,8 @@ export default function WalkView({
       )}
 
       {tour && stop && (
-        <div className="absolute inset-x-0 bottom-0 flex justify-center p-4">
-          <div className="card-base w-full max-w-lg p-5" role="dialog" aria-label="Tour card">
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center p-4">
+          <div className="card-base pointer-events-auto w-full max-w-lg p-5" role="dialog" aria-label="Tour card">
             <div className="mb-3 flex items-center gap-3">
               <span className="grid h-9 w-9 place-items-center rounded-full bg-accent text-base font-bold text-accent-foreground">{stop.locusIndex + 1}</span>
               <div className="min-w-0 flex-1">
@@ -564,8 +711,8 @@ export default function WalkView({
       )}
 
       {summary && !tour && (
-        <div className="absolute inset-x-0 bottom-0 flex justify-center p-4">
-          <div className="card-base w-full max-w-sm p-5 text-center">
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center p-4">
+          <div className="card-base pointer-events-auto w-full max-w-sm p-5 text-center">
             <p className="text-lg font-semibold">Tour complete</p>
             <p className="mt-1 text-sm text-muted-foreground">
               {summary.total > 0 ? `You recalled ${summary.got} of ${summary.total} cards.` : "You walked every locus."}
@@ -583,8 +730,8 @@ export default function WalkView({
       )}
 
       {focused && dismissedId !== focused.locus.id && !summary && (
-        <div className="absolute inset-x-0 bottom-0 flex justify-center p-4">
-          <div className="card-base max-h-[45dvh] w-full max-w-md overflow-y-auto p-4">
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center p-4">
+          <div className="card-base pointer-events-auto max-h-[45dvh] w-full max-w-md overflow-y-auto p-4">
             <div className="mb-1 flex items-start justify-between gap-3">
               <div>
                 <p className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">Locus {focusedNumber + 1}</p>
