@@ -1,0 +1,207 @@
+import { describe, expect, it } from "vitest";
+import * as THREE from "three";
+import type { Locus, Opening, Room } from "@/types/database";
+import {
+  anchorFromPoint,
+  buildTourStops,
+  cutawayWalls,
+  easeInOut,
+  exitThroughDoor,
+  fromScene,
+  lerpPose,
+  nearestAnchor,
+  reorderPositions,
+  returnDoor,
+  spawnAtDoor,
+  toScene,
+  tourOrder,
+  tourStep,
+  viewPoseForLocus,
+} from "./scene3d";
+import { forwardVec, stepPlayer } from "./walk";
+
+const room: Room = {
+  id: "r",
+  palace_id: "p",
+  user_id: "u",
+  title: "Room",
+  background: null,
+  metadata: {},
+  width: 10,
+  depth: 8,
+  height: 3,
+  level_id: null,
+  pos_x: 0,
+  pos_z: 0,
+  rotation: 0,
+  outline: null,
+  created_at: "2026-01-01T00:00:00Z",
+};
+
+const locus = (id: string, position: number, extra: Partial<Locus> = {}): Locus => ({
+  id,
+  room_id: "r",
+  x: 0,
+  y: 0,
+  z: null,
+  label: id,
+  tags: [],
+  position,
+  wall: "north",
+  wall_offset: 0.5,
+  height: 1.5,
+  created_at: "2026-01-01T00:00:00Z",
+  ...extra,
+});
+
+const opening = (o: Partial<Opening>): Opening => ({
+  id: "o",
+  room_id: "r",
+  wall: "east",
+  wall_offset: 0.5,
+  width: 0.1,
+  width_m: 1,
+  kind: "door",
+  target_room_id: null,
+  created_at: "2026-01-01T00:00:00Z",
+  ...o,
+});
+
+describe("world <-> scene mapping", () => {
+  it("negates z so the scene is not mirrored", () => {
+    expect(toScene({ x: 1, y: 2, z: 3 })).toEqual([1, 2, -3]);
+    expect(fromScene({ x: 1, y: 2, z: -3 })).toEqual({ x: 1, y: 2, z: 3 });
+  });
+  it("puts east on the RIGHT when facing north (three.js projection)", () => {
+    const cam = new THREE.PerspectiveCamera(70, 1, 0.1, 100);
+    const f = forwardVec(0);
+    cam.position.set(...toScene({ x: 5, y: 1.6, z: 1 }));
+    cam.lookAt(...toScene({ x: 5 + f.x, y: 1.6, z: 1 + f.z }));
+    cam.updateMatrixWorld();
+    const east = new THREE.Vector3(...toScene({ x: 8, y: 1.6, z: 6 })).project(cam);
+    const west = new THREE.Vector3(...toScene({ x: 2, y: 1.6, z: 6 })).project(cam);
+    expect(east.x).toBeGreaterThan(0);
+    expect(west.x).toBeLessThan(0);
+  });
+});
+
+describe("raycast hit -> wall anchor", () => {
+  it("maps a north/south hit by x and an east/west hit by z", () => {
+    expect(anchorFromPoint("north", { x: 2.5, y: 1.42, z: 8 }, room)).toEqual({ wall: "north", wall_offset: 0.25, height: 1.4 });
+    expect(anchorFromPoint("east", { x: 10, y: 2, z: 2 }, room)).toEqual({ wall: "east", wall_offset: 0.25, height: 2 });
+  });
+  it("snaps along the wall and clamps offset and height", () => {
+    expect(anchorFromPoint("south", { x: 3.33, y: 1.5, z: 0 }, room).wall_offset).toBeCloseTo(0.33);
+    expect(anchorFromPoint("west", { x: 0, y: 9, z: -1 }, room)).toEqual({ wall: "west", wall_offset: 0, height: 2.8 });
+    expect(anchorFromPoint("west", { x: 0, y: -1, z: 12 }, room)).toEqual({ wall: "west", wall_offset: 1, height: 0.3 });
+  });
+  it("picks the nearest wall for free points", () => {
+    expect(nearestAnchor({ x: 9.6, y: 1.5, z: 4 }, room).wall).toBe("east");
+    expect(nearestAnchor({ x: 5, y: 1.5, z: 0.2 }, room).wall).toBe("south");
+  });
+});
+
+describe("cutaway walls", () => {
+  it("hides the walls between an outside camera and the room", () => {
+    expect([...cutawayWalls({ x: 12, z: -3 }, room)].sort()).toEqual(["east", "south"]);
+    expect(cutawayWalls({ x: 5, z: 4 }, room).size).toBe(0);
+  });
+});
+
+describe("tour ordering", () => {
+  const loci = [
+    locus("c", 2),
+    locus("a", 0, { created_at: "2026-01-02T00:00:00Z" }),
+    locus("b", 0, { created_at: "2026-01-01T00:00:00Z" }),
+  ];
+  it("orders by position, then created_at, then id", () => {
+    expect(tourOrder(loci).map((l) => l.id)).toEqual(["b", "a", "c"]);
+  });
+  it("steps with clamping or wrapping", () => {
+    expect(tourStep(3, 2, 1)).toBe(2);
+    expect(tourStep(3, 2, 1, true)).toBe(0);
+    expect(tourStep(3, 0, -1, true)).toBe(2);
+    expect(tourStep(0, 0, 1)).toBe(-1);
+  });
+  it("reorders by swapping and normalising positions", () => {
+    // b(0) a(0) c(2) -> move c up -> b, c, a with positions 0,1,2
+    expect(reorderPositions(loci, "c", -1)).toEqual([
+      { id: "c", position: 1 },
+      { id: "a", position: 2 },
+    ]);
+    expect(reorderPositions(loci, "b", -1)).toEqual([]);
+  });
+});
+
+describe("tour camera", () => {
+  it("stands in front of a north-wall locus looking north", () => {
+    const pose = viewPoseForLocus({ wall: "north", wall_offset: 0.5, height: 1.6 }, room, 2);
+    expect(pose.x).toBeCloseTo(5);
+    expect(pose.z).toBeCloseTo(6);
+    expect(pose.yaw).toBeCloseTo(0);
+    expect(pose.pitch).toBeCloseTo(0);
+  });
+  it("faces east for an east-wall locus and stays inside small rooms", () => {
+    const pose = viewPoseForLocus({ wall: "east", wall_offset: 0.5, height: 1.6 }, { ...room, width: 2 }, 3);
+    expect(pose.x).toBeCloseTo(0.6);
+    expect(pose.yaw).toBeCloseTo(Math.PI / 2);
+  });
+  it("eases and interpolates yaw the short way", () => {
+    expect(easeInOut(0)).toBe(0);
+    expect(easeInOut(1)).toBe(1);
+    expect(easeInOut(0.5)).toBeCloseTo(0.5);
+    const mid = lerpPose({ x: 0, z: 0, yaw: 3, pitch: 0 }, { x: 2, z: 2, yaw: -3, pitch: 0 }, 0.5);
+    expect(Math.abs(mid.yaw)).toBeCloseTo(Math.PI, 1);
+    expect(mid.x).toBe(1);
+  });
+});
+
+describe("linked doors in walk mode", () => {
+  const linked = opening({ id: "d1", wall: "east", wall_offset: 0.5, width_m: 1, target_room_id: "r2" });
+  it("detects walking out through a linked door", () => {
+    expect(exitThroughDoor({ x: 10.4, z: 4.1 }, room, [linked])?.id).toBe("d1");
+    expect(exitThroughDoor({ x: 10.4, z: 1 }, room, [linked])).toBeNull(); // beside the door
+    expect(exitThroughDoor({ x: 10.4, z: 4 }, room, [{ ...linked, target_room_id: null }])).toBeNull(); // unlinked
+    expect(exitThroughDoor({ x: 5, z: 4 }, room, [linked])).toBeNull(); // still inside
+  });
+  it("spawns just inside the return door, facing into the room", () => {
+    const back = opening({ id: "d2", room_id: "r2", wall: "west", wall_offset: 0.25, target_room_id: "r" });
+    expect(returnDoor([linked, back], "r2", "r")?.id).toBe("d2");
+    const pose = spawnAtDoor(back, room);
+    expect(pose.x).toBeCloseTo(1);
+    expect(pose.z).toBeCloseTo(2);
+    expect(pose.yaw).toBeCloseTo(Math.PI / 2); // facing east, into the room
+  });
+});
+
+describe("walk movement handedness", () => {
+  it("strafes right = east when facing north", () => {
+    const next = stepPlayer({ x: 5, z: 4, yaw: 0, pitch: 0 }, { throttle: 0, strafe: 1 }, 0.05, room, []);
+    expect(next.x).toBeGreaterThan(5);
+    expect(next.z).toBeCloseTo(4);
+  });
+  it("walks forward = north at yaw 0", () => {
+    const next = stepPlayer({ x: 5, z: 4, yaw: 0, pitch: 0 }, { throttle: 1, strafe: 0 }, 0.05, room, []);
+    expect(next.z).toBeGreaterThan(4);
+  });
+});
+
+describe("tour stops", () => {
+  it("makes one stop per card in locus order, and a card-less stop for empty loci", () => {
+    const loci = [locus("b", 1), locus("a", 0), locus("e", 2)];
+    const cards = [
+      { id: "c2", locus_id: "a", created_at: "2026-01-02T00:00:00Z" },
+      { id: "c1", locus_id: "a", created_at: "2026-01-01T00:00:00Z" },
+      { id: "c3", locus_id: "b", created_at: "2026-01-01T00:00:00Z" },
+      { id: "orphan", locus_id: "zzz", created_at: "2026-01-01T00:00:00Z" },
+    ];
+    const stops = buildTourStops(loci, cards);
+    expect(stops.map((s) => [s.locus.id, s.card?.id ?? null, s.locusIndex])).toEqual([
+      ["a", "c1", 0],
+      ["a", "c2", 0],
+      ["b", "c3", 1],
+      ["e", null, 2],
+    ]);
+    expect(new Set(stops.map((s) => s.key)).size).toBe(4);
+  });
+});

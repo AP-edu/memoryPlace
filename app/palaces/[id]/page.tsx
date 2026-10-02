@@ -102,7 +102,7 @@ export default function PalacePage() {
       {previewRoom && (
         <div className="card-base mt-6 p-4">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-xl font-semibold">3D preview — {previewRoom.title}</h2>
+            <h2 className="text-xl font-semibold">3D preview: {previewRoom.title}</h2>
             <button onClick={() => setPreviewRoomId(null)} className="btn-ghost">
               Close
             </button>
@@ -112,11 +112,14 @@ export default function PalacePage() {
             <Link href={`/walk/${previewRoom.id}`} className="btn-primary px-3 py-1.5">
               Walk this room →
             </Link>
-            <Link href={`/spike-3d/${previewRoom.id}`} className="btn-ghost">
-              Open 3D spike
+            <Link href={`/walk/${previewRoom.id}?tour=1`} className="btn-outline px-3 py-1.5">
+              Tour the loci
+            </Link>
+            <Link href={`/rooms/${previewRoom.id}?view=3d`} className="btn-ghost">
+              Edit in 3D
             </Link>
             <Link href={`/rooms/${previewRoom.id}`} className="btn-ghost">
-              Loci &amp; cards
+              Loci &amp; cards (2D)
             </Link>
           </div>
         </div>

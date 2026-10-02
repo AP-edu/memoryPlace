@@ -1,11 +1,20 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useFetch } from "@/hooks/useFetch";
+import { useSearchParam } from "@/hooks/useSearchParam";
 import type { Card, Locus, Opening, Room, WallFace } from "@/types/database";
 import { cardBack, cardFront } from "@/types/database";
 import { clamp01, openingWidthM, wallPoint } from "@/lib/geometry";
+import { httpLociActions } from "@/components/scene3d/actions";
+
+// three.js is client-only and heavy: load the 3D editor on demand.
+const Room3DEditor = dynamic(() => import("@/components/scene3d/Room3DEditor"), {
+  ssr: false,
+  loading: () => <div className="h-[520px] animate-pulse rounded-2xl border border-border bg-card" />,
+});
 
 const THICK = 0.5;
 const SNAP_STEPS = [0, 0.25, 0.5, 0.75, 1];
@@ -59,6 +68,22 @@ export default function RoomPage() {
   );
 
   const [formError, setFormError] = useState<string | null>(null);
+
+  // 2D plan vs 3D editor; both edit the same loci/cards rows via the same API.
+  const viewParam = useSearchParam("view");
+  const [viewChoice, setView] = useState<"2d" | "3d" | null>(null);
+  const view = viewChoice ?? (viewParam === "3d" ? "3d" : "2d");
+  function switchView(next: "2d" | "3d") {
+    setView(next);
+    const url = new URL(window.location.href);
+    if (next === "3d") url.searchParams.set("view", "3d");
+    else url.searchParams.delete("view");
+    window.history.replaceState(null, "", url);
+  }
+  const lociActions = useMemo(
+    () => httpLociActions((what) => (what === "loci" ? refetchLoci() : refetchCards())),
+    [refetchLoci, refetchCards]
+  );
 
   // Geometry
   const [roomTitle, setRoomTitle] = useState("");
@@ -311,8 +336,11 @@ export default function RoomPage() {
           <Link href={`/study/${room.id}`} className="btn-outline !px-3 !py-1.5">
             Study
           </Link>
-          <Link href={`/spike-3d/${room.id}`} className="btn-ghost">
-            3D spike
+          <Link href={`/walk/${room.id}`} className="btn-outline !px-3 !py-1.5">
+            Walk
+          </Link>
+          <Link href={`/walk/${room.id}?tour=1`} className="btn-primary !px-3 !py-1.5">
+            Tour loci
           </Link>
           <button onClick={deleteRoom} className="btn-danger">
             Delete room
@@ -320,7 +348,22 @@ export default function RoomPage() {
         </div>
       </div>
 
-      <h1 className="mt-3 mb-4 text-3xl font-semibold">Room Editor</h1>
+      <div className="mt-3 mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-3xl font-semibold">Room Editor</h1>
+        <div role="tablist" aria-label="Editor view" className="inline-flex rounded-xl border border-border bg-card p-1 text-sm">
+          {(["2d", "3d"] as const).map((v) => (
+            <button
+              key={v}
+              role="tab"
+              aria-selected={view === v}
+              onClick={() => switchView(v)}
+              className={`rounded-lg px-3 py-1.5 font-medium transition ${view === v ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              {v === "2d" ? "2D plan" : "3D room"}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <div className="card-base mb-4 flex flex-wrap items-end gap-2 p-4">
         <div className="flex flex-col gap-1">
@@ -349,7 +392,13 @@ export default function RoomPage() {
 
       {formError && <p className="mb-4 text-sm text-destructive">{formError}</p>}
 
-      {size && (
+      {view === "3d" && (
+        <div className="mb-4">
+          <Room3DEditor room={room} loci={loci ?? []} openings={openings ?? []} cards={cards ?? []} actions={lociActions} />
+        </div>
+      )}
+
+      {view === "2d" && size && (
         <div className="card-base mb-4 p-4">
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <h2 className="font-semibold">Floor plan (top-down)</h2>
@@ -459,6 +508,7 @@ export default function RoomPage() {
         </div>
       )}
 
+      {view === "2d" && (
       <div className="grid gap-4 md:grid-cols-2">
         <div className="card-base flex flex-col gap-3 p-4">
           <div>
@@ -581,6 +631,7 @@ export default function RoomPage() {
           </div>
         </div>
       </div>
+      )}
 
       <div className="mt-4 grid gap-4 md:grid-cols-2">
         <div className="card-base p-4">

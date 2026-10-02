@@ -119,8 +119,9 @@ export function stepPlayer(
   const step = Math.min(Math.max(dt, 0), 0.05) * speed;
   const fx = Math.sin(pose.yaw);
   const fz = Math.cos(pose.yaw);
-  const rx = -fz;
-  const rz = fx;
+  // Right-hand vector in world (x east, z north): facing north, right is east.
+  const rx = fz;
+  const rz = -fx;
   const dx = (fx * input.throttle + rx * input.strafe) * step;
   const dz = (fz * input.throttle + rz * input.strafe) * step;
 
