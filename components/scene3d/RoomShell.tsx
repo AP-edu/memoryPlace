@@ -8,6 +8,7 @@ import { locusWorldPos, openingWidthM, wallPoint } from "@/lib/geometry";
 import { wallSpans } from "@/lib/walk";
 import { cutawayWalls, fromScene, inwardNormal, toScene, tourOrder, WALL_FACES } from "@/lib/scene3d";
 import type { SceneColors } from "./useSceneColors";
+import { isHallway } from "@/lib/hallway";
 
 // Shared 3D room geometry for the room editor, the palace preview and walk
 // mode. Everything is authored in world coords and placed with toScene()
@@ -80,10 +81,12 @@ export function RoomShell({
       : undefined;
 
   // Room colour tints the themed floor so it reads in light and dark.
-  const floorColor = useMemo(
-    () => (room.background ? "#" + new THREE.Color(colors.floor).lerp(new THREE.Color(room.background), 0.35).getHexString() : colors.floor),
-    [room.background, colors.floor]
-  );
+  // Hallways get a cooler, path-coloured floor so they read as corridors.
+  const hallway = isHallway(room);
+  const floorColor = useMemo(() => {
+    const tint = room.background ?? (hallway ? colors.archway : null);
+    return tint ? "#" + new THREE.Color(colors.floor).lerp(new THREE.Color(tint), hallway && !room.background ? 0.18 : 0.35).getHexString() : colors.floor;
+  }, [room.background, colors.floor, colors.archway, hallway]);
 
   return (
     <group>
@@ -126,14 +129,20 @@ export function RoomShell({
                 </mesh>
               );
             })}
-            {/* lintels over every opening + a coloured threshold so doors read clearly */}
+            {/* Lintels over every opening. Doors get a frame and an open door
+                leaf; archways stay a plain open gap. */}
             {gaps.map((o) => {
               const w = openingWidthM(o, size);
               const c = wallPoint(wall, o.wall_offset ?? 0.5, size);
               const top = lintelHeight(o, room);
               const lintelH = room.height - top;
               const base = { x: c.x - (n.x * WALL_THICK) / 2, z: c.z - (n.z * WALL_THICK) / 2 };
-              const color = o.kind === "door" ? colors.door : colors.archway;
+              const along = horizontal ? { x: 1, z: 0 } : { x: 0, z: 1 };
+              const at = (a: number, inward: number, y: number) =>
+                toScene({ x: base.x + along.x * a + n.x * inward, y, z: base.z + along.z * a + n.z * inward });
+              const J = 0.08; // jamb / trim thickness
+              const box = (alongLen: number, h: number, depth: number): [number, number, number] =>
+                horizontal ? [alongLen, h, depth] : [depth, h, alongLen];
               return (
                 <group key={o.id}>
                   {lintelH > 0.02 && (
@@ -142,10 +151,25 @@ export function RoomShell({
                       <meshStandardMaterial color={colors.wall} roughness={0.85} />
                     </mesh>
                   )}
-                  <mesh position={toScene({ x: base.x, y: 0.01, z: base.z })} raycast={noRaycast}>
-                    <boxGeometry args={horizontal ? [w, 0.02, WALL_THICK + 0.06] : [WALL_THICK + 0.06, 0.02, w]} />
-                    <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.35} />
-                  </mesh>
+                  {o.kind === "door" && (
+                    <>
+                      {[-1, 1].map((side) => (
+                        <mesh key={side} position={at(side * (w / 2 - J / 2), 0, top / 2)} raycast={noRaycast}>
+                          <boxGeometry args={box(J, top, WALL_THICK + 0.05)} />
+                          <meshStandardMaterial color={colors.door} roughness={0.6} />
+                        </mesh>
+                      ))}
+                      <mesh position={at(0, 0, top - J / 2)} raycast={noRaycast}>
+                        <boxGeometry args={box(w, J, WALL_THICK + 0.05)} />
+                        <meshStandardMaterial color={colors.door} roughness={0.6} />
+                      </mesh>
+                      {/* door leaf, hinged at one jamb and swung open into the room */}
+                      <mesh position={at(-w / 2 + J + 0.02, WALL_THICK / 2 + (w - 2 * J) / 2, (top - J) / 2)} raycast={noRaycast}>
+                        <boxGeometry args={box(0.04, top - J - 0.02, w - 2 * J)} />
+                        <meshStandardMaterial color={colors.door} roughness={0.7} transparent opacity={0.85} />
+                      </mesh>
+                    </>
+                  )}
                 </group>
               );
             })}
