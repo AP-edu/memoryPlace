@@ -554,7 +554,7 @@ export default function RoomPage() {
                   key={s}
                   onClick={() => setGeoOffset(s)}
                   className={`rounded-full border px-2.5 py-0.5 text-xs transition-colors ${
-                    Math.abs(geoOffset - s) < 0.01 ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/50"
+                    Math.abs(geoOffset - s) < 0.01 ? "border-primary bg-primary/10 text-link" : "border-border text-muted-foreground hover:border-primary/50"
                   }`}
                 >
                   {s * 100}%
@@ -607,7 +607,7 @@ export default function RoomPage() {
                   locus.id === activeId ? "border-primary bg-primary/10" : "border-border hover:border-primary/40"
                 }`}
               >
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent/15 text-xs font-semibold text-accent">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent/15 text-xs font-semibold text-highlight">
                   {i + 1}
                 </span>
                 <span className="min-w-0 flex-1 truncate">{locus.label}</span>
@@ -663,7 +663,7 @@ export default function RoomPage() {
                   {op.wall} wall · {Math.round((op.wall_offset ?? 0.5) * 100)}%
                 </span>
                 <div className="ml-auto flex items-center gap-2 text-xs">
-                  <button onClick={() => toggleOpening(op)} className="text-primary hover:underline">
+                  <button onClick={() => toggleOpening(op)} className="text-link hover:underline">
                     {op.kind === "door" ? "Make archway" : "Make door"}
                   </button>
                   <button onClick={() => deleteOpening(op)} className="text-destructive hover:underline">

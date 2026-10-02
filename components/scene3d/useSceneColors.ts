@@ -33,14 +33,14 @@ const VARS: Record<keyof SceneColors, string> = {
 export const DEFAULT_SCENE_COLORS: SceneColors = {
   sky: "#0a0b14",
   fog: "#0a0b14",
-  floor: "#1a1d3a",
-  wall: "#2a2f5c",
+  floor: "#262b57",
+  wall: "#4a52a3",
   door: "#ffcd1f",
   archway: "#3ccfcf",
-  locus: "#4255ff",
+  locus: "#5a6bff",
   locusActive: "#ffcd1f",
-  path: "#5a6bff",
-  grid: "#2a2f5c",
+  path: "#8f9bff",
+  grid: "#232858",
 };
 
 let cacheKey = "";

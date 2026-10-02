@@ -29,7 +29,7 @@ const room = (id: string, title: string, w: number, d: number, bg: string | null
   outline: null,
   created_at: T,
 });
-const ROOMS: Room[] = [room("r-hall", "Entrance hall", 6, 4, null), room("r-lib", "Library", 5, 7, null)];
+const ROOMS: Room[] = [room("r-hall", "Entrance hall", 6, 4, null), room("r-lib", "Library", 5, 7, "#4255ff")];
 const op = (id: string, roomId: string, wall: Opening["wall"], offset: number, widthM: number, target: string | null, kind: Opening["kind"] = "door"): Opening => ({
   id,
   room_id: roomId,

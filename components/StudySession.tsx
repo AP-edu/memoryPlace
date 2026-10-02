@@ -174,7 +174,7 @@ export default function StudySession({
         </Link>
         <span
           className={`rounded-full border px-3 py-1 text-xs font-medium ${
-            data.due === 0 ? "border-green-700/50 text-green-700" : "border-accent/50 text-accent"
+            data.due === 0 ? "border-success/50 text-success" : "border-accent/50 text-highlight"
           }`}
         >
           {data.due === 0
@@ -194,7 +194,7 @@ export default function StudySession({
       <p className="mb-1 text-center text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
         {data.title}
       </p>
-      <p className="mb-3 text-center font-display text-lg text-accent">
+      <p className="mb-3 text-center font-display text-lg text-highlight">
         Card {index + 1} of {queue.length}
       </p>
       <div className="mb-5 flex justify-center gap-2 text-sm">
@@ -238,14 +238,14 @@ export default function StudySession({
             <button
               onClick={() => handleAnswer(false)}
               disabled={saving}
-              className="rounded-lg bg-destructive px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-destructive/90"
+              className="rounded-xl bg-destructive px-5 py-2 text-sm font-semibold text-destructive-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
             >
               Got it wrong
             </button>
             <button
               onClick={() => handleAnswer(true)}
               disabled={saving}
-              className="rounded-lg bg-green-600 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-green-700"
+              className="rounded-xl bg-success px-5 py-2 text-sm font-semibold text-success-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
             >
               Got it right
             </button>

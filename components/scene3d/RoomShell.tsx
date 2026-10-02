@@ -79,7 +79,11 @@ export function RoomShell({
       ? (e: ThreeEvent<PointerEvent> | ThreeEvent<MouseEvent>) => cb({ wall, point: fromScene(e.point), event: e })
       : undefined;
 
-  const floorColor = room.background ?? colors.floor;
+  // Room colour tints the themed floor so it reads in light and dark.
+  const floorColor = useMemo(
+    () => (room.background ? "#" + new THREE.Color(colors.floor).lerp(new THREE.Color(room.background), 0.35).getHexString() : colors.floor),
+    [room.background, colors.floor]
+  );
 
   return (
     <group>
@@ -236,11 +240,12 @@ export function LocusMarkers({
   );
 }
 
-export function SceneLights() {
+export function SceneLights({ colors }: { colors: SceneColors }) {
   return (
     <>
-      <hemisphereLight args={["#ffffff", "#30344f", 0.75]} />
-      <directionalLight position={[8, 14, 6]} intensity={1.1} />
+      <hemisphereLight args={[colors.sky, colors.floor, 0.9]} />
+      <ambientLight intensity={0.35} />
+      <directionalLight position={[8, 14, 6]} intensity={1.0} />
     </>
   );
 }

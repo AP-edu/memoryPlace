@@ -32,7 +32,7 @@ export default function Room3DViewer({
       >
         <color attach="background" args={[colors.sky]} />
         <fog attach="fog" args={[colors.fog, d * 1.5, d * 4]} />
-        <SceneLights />
+        <SceneLights colors={colors} />
         <RoomShell room={room} openings={openings} colors={colors} cutaway />
         <LocusMarkers
           room={room}

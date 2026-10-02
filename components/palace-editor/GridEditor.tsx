@@ -49,7 +49,18 @@ const SAVE_DELAY_MS = 400;
 const MIN_PPM = 4;
 const MAX_PPM = 300;
 const HANDLES: Handle[] = ["n", "s", "e", "w", "ne", "nw", "se", "sw"];
-const THEMES = ["#e8dcc8", "#cfd4c0", "#c9d1d8", "#dfc0b0", "#3a3f4a"];
+// Room colour swatches (stored per room as a hex). They are drawn as a tint
+// over the themed card colour in 2D and over the themed floor in 3D, so labels
+// keep their contrast in both light and dark themes.
+export const ROOM_COLORS: Array<{ value: string | null; name: string }> = [
+  { value: null, name: "Default" },
+  { value: "#4255ff", name: "Indigo" },
+  { value: "#3ccfcf", name: "Cyan" },
+  { value: "#ffcd1f", name: "Yellow" },
+  { value: "#ff6b81", name: "Coral" },
+  { value: "#a78bfa", name: "Violet" },
+  { value: "#3ddc97", name: "Mint" },
+];
 const SNAP_CHOICES = [0.1, 0.25, 0.5, 1];
 
 const byIdx = (a: Level, b: Level) => a.idx - b.idx || a.created_at.localeCompare(b.created_at);
@@ -928,7 +939,7 @@ export function GridEditor({
                 setSelection(null);
               }}
               className={`rounded-t-lg border-b-2 px-3 py-1.5 text-sm ${
-                l.id === activeLevel?.id ? "border-primary font-semibold text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
+                l.id === activeLevel?.id ? "border-primary font-semibold text-link" : "border-transparent text-muted-foreground hover:text-foreground"
               }`}
             >
               {l.name}
@@ -989,12 +1000,15 @@ export function GridEditor({
                     y={-(rect.z + rect.d)}
                     width={rect.w}
                     height={rect.d}
-                    fill={r.background ?? "var(--card)"}
-                    fillOpacity={0.92}
-                    stroke={invalid ? "var(--destructive)" : sel ? "var(--primary)" : "var(--foreground)"}
+                    fill="var(--card)"
+                    fillOpacity={0.95}
+                    stroke={invalid ? "var(--destructive)" : sel ? "var(--primary)" : "var(--muted-foreground)"}
                     strokeWidth={sel ? 3 : 2}
                     vectorEffect="non-scaling-stroke"
                   />
+                  {r.background && (
+                    <rect x={rect.x} y={-(rect.z + rect.d)} width={rect.w} height={rect.d} fill={r.background} fillOpacity={0.22} pointerEvents="none" />
+                  )}
                   <text x={rect.x + rect.w / 2} y={-(rect.z + rect.d / 2)} textAnchor="middle" fontSize={px(13)} fontWeight={600} fill="var(--foreground)" pointerEvents="none">
                     {r.title}
                   </text>
@@ -1226,7 +1240,7 @@ function RoomPanel({
   saved: boolean;
   onRename: (title: string) => void;
   onGeometry: (rect: Rect, height: number) => boolean;
-  onTheme: (bg: string) => void;
+  onTheme: (bg: string | null) => void;
   onDelete: () => void;
   onPreview?: () => void;
 }) {
@@ -1266,8 +1280,17 @@ function RoomPanel({
       </div>
       {err && <p className="text-xs text-destructive">{err}</p>}
       <div className="flex gap-1.5">
-        {THEMES.map((t) => (
-          <button key={t} onClick={() => onTheme(t)} title={`Floor ${t}`} aria-label={`Floor colour ${t}`} className={`h-6 w-6 rounded-full border-2 ${room.background === t ? "border-primary" : "border-foreground/20"}`} style={{ background: t }} />
+        {ROOM_COLORS.map((t) => (
+          <button
+            key={t.name}
+            type="button"
+            onClick={() => onTheme(t.value)}
+            title={`Room colour: ${t.name}`}
+            aria-label={`Room colour ${t.name}`}
+            aria-pressed={(room.background ?? null) === t.value}
+            className={`h-6 w-6 rounded-full border-2 ${(room.background ?? null) === t.value ? "border-primary ring-2 ring-ring/40" : "border-border"}`}
+            style={{ background: t.value ?? "var(--card)" }}
+          />
         ))}
       </div>
       <div className="flex flex-wrap gap-2 pt-1 text-sm">

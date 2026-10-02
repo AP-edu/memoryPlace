@@ -51,7 +51,7 @@ export default function ResetPasswordPage() {
         </form>
       </div>
       <p className="mt-5 text-center text-sm text-muted-foreground">
-        <Link href="/login" className="font-medium text-primary hover:underline">
+        <Link href="/login" className="font-medium text-link hover:underline">
           Back to log in
         </Link>
       </p>

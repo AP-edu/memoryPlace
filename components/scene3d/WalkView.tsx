@@ -453,7 +453,7 @@ export default function WalkView({
         <Canvas camera={{ fov: 70, near: 0.05, far: 120 }}>
           <color attach="background" args={[colors.sky]} />
           <fog attach="fog" args={[colors.fog, 12, 40]} />
-          <SceneLights />
+          <SceneLights colors={colors} />
           <RoomShell room={room} openings={openings} colors={colors} />
           <LocusMarkers room={room} loci={loci} colors={colors} selectedId={stop?.locus.id ?? focused?.locus.id ?? null} showPath={!!tour} />
           <DoorSigns room={room} openings={openings} roomTitles={roomTitles} />
@@ -602,7 +602,7 @@ export default function WalkView({
                   <div key={card.id} className="rounded-xl border border-border p-3">
                     <p className="font-medium">{cardFront(card)}</p>
                     {revealedCards[card.id] ? (
-                      <p className="mt-1 text-sm text-primary">{cardBack(card)}</p>
+                      <p className="mt-1 text-sm text-link">{cardBack(card)}</p>
                     ) : (
                       <button type="button" onClick={() => setRevealedCards((r) => ({ ...r, [card.id]: true }))} className="btn-outline mt-2 !px-3 !py-1.5 !text-xs">
                         Reveal answer

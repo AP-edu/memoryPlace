@@ -38,10 +38,10 @@ const room = (id: string, title: string, level: string, x: number, z: number, w:
   created_at: T,
 });
 const rooms: Room[] = [
-  room("r-hall", "Entrance hall", "lvl-0", 0, 0, 6, 4, "#e8dcc8"),
-  room("r-lib", "Library", "lvl-0", 6, 0, 5, 7, "#cfd4c0"),
+  room("r-hall", "Entrance hall", "lvl-0", 0, 0, 6, 4, "#4255ff"),
+  room("r-lib", "Library", "lvl-0", 6, 0, 5, 7, "#3ddc97"),
   room("r-kit", "Kitchen", "lvl-0", 0, 4, 6, 3),
-  room("r-study", "Study", "lvl-1", 0, 0, 5, 4, "#c9d1d8"),
+  room("r-study", "Study", "lvl-1", 0, 0, 5, 4, "#a78bfa"),
 ];
 const op = (id: string, roomId: string, wall: Opening["wall"], offset: number, widthM: number, target: string | null, kind: Opening["kind"] = "door"): Opening => ({
   id,

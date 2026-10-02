@@ -208,7 +208,7 @@ export default function Room3DEditor({
         >
           <color attach="background" args={[colors.sky]} />
           <fog attach="fog" args={[colors.fog, camDist * 1.5, camDist * 4]} />
-          <SceneLights />
+          <SceneLights colors={colors} />
           <RoomShell room={room} openings={openings} colors={colors} cutaway onWallClick={onWallClick} onWallMove={onWallMove} />
           <LocusMarkers
             room={room}
@@ -406,7 +406,7 @@ function LocusDetails({
               <p className="font-medium">{cardFront(c)}</p>
               <p className="text-muted-foreground">{cardBack(c)}</p>
               <div className="mt-1 flex gap-3 text-xs">
-                <button type="button" className="text-primary hover:underline" onClick={() => setEditing({ id: c.id, front: cardFront(c), back: cardBack(c) })}>
+                <button type="button" className="text-link hover:underline" onClick={() => setEditing({ id: c.id, front: cardFront(c), back: cardBack(c) })}>
                   Edit
                 </button>
                 <button type="button" className="text-destructive hover:underline" onClick={() => onDeleteCard(c.id)}>
