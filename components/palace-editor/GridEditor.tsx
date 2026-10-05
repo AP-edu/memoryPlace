@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Level, Opening, OpeningKind, Palace, Room } from "@/types/database";
 import { DEFAULT_OPENING_WIDTH_M, openingWidthM, wallLength } from "@/lib/geometry";
 import {
+  autoLinks,
   findLinkTarget,
   findPartner,
   fmtM,
@@ -48,7 +49,18 @@ const SAVE_DELAY_MS = 400;
 const MIN_PPM = 4;
 const MAX_PPM = 300;
 const HANDLES: Handle[] = ["n", "s", "e", "w", "ne", "nw", "se", "sw"];
-const THEMES = ["#e8dcc8", "#cfd4c0", "#c9d1d8", "#dfc0b0", "#3a3f4a"];
+// Room colour swatches (stored per room as a hex). They are drawn as a tint
+// over the themed card colour in 2D and over the themed floor in 3D, so labels
+// keep their contrast in both light and dark themes.
+export const ROOM_COLORS: Array<{ value: string | null; name: string }> = [
+  { value: null, name: "Default" },
+  { value: "#4255ff", name: "Indigo" },
+  { value: "#3ccfcf", name: "Cyan" },
+  { value: "#ffcd1f", name: "Yellow" },
+  { value: "#ff6b81", name: "Coral" },
+  { value: "#a78bfa", name: "Violet" },
+  { value: "#3ddc97", name: "Mint" },
+];
 const SNAP_CHOICES = [0.1, 0.25, 0.5, 1];
 
 const byIdx = (a: Level, b: Level) => a.idx - b.idx || a.created_at.localeCompare(b.created_at);
@@ -88,7 +100,7 @@ export interface GridEditorProps {
   initialOpenings: Opening[];
   backend: EditorBackend;
   /** Called whenever the local room list changes (e.g. to render a room list beside the editor). */
-  onRoomsChange?: (rooms: Room[], levels: Level[]) => void;
+  onRoomsChange?: (rooms: Room[], levels: Level[], openings: Opening[]) => void;
   onPreviewRoom?: (roomId: string) => void;
 }
 
@@ -136,8 +148,8 @@ export function GridEditor({
 
   // ------------------------------------------------------------ effects
   useEffect(() => {
-    onRoomsChange?.(rooms, levels);
-  }, [rooms, levels, onRoomsChange]);
+    onRoomsChange?.(rooms, levels, openings);
+  }, [rooms, levels, openings, onRoomsChange]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -324,7 +336,7 @@ export function GridEditor({
     return rooms.filter((r) => r.id !== id && levelOf(r) === levelId).map(roomRect);
   }
 
-  function applyOpeningPatches(patches: Array<{ id: string; wall_offset?: number; target_room_id?: null }>) {
+  function applyOpeningPatches(patches: Array<{ id: string; wall_offset?: number; target_room_id?: string | null }>) {
     if (patches.length === 0) return;
     setOpenings((os) =>
       os.map((o) => {
@@ -350,7 +362,46 @@ export function GridEditor({
     saveRoom(id, patch);
     const nextMap = new Map(nextRooms.map((r) => [r.id, r]));
     const sameLevel = nextRooms.filter((r) => levelOf(r) === levelId);
-    applyOpeningPatches(reconcileLinks(id, placementRooms(sameLevel), linkable(openings, nextMap)));
+    const placed = placementRooms(sameLevel);
+    const reconciled = reconcileLinks(id, placed, linkable(openings, nextMap));
+    // Then link doorways that the move put onto a newly shared wall.
+    const afterReconcile = openings.map((o) => {
+      const p = reconciled.find((x) => x.id === o.id);
+      return p ? { ...o, ...p } : o;
+    });
+    const links = autoLinks(id, placed, linkable(afterReconcile, nextMap));
+    const patches: Array<{ id: string; wall_offset?: number; target_room_id?: string | null }> = [...reconciled];
+    const add = (p: { id: string; wall_offset?: number; target_room_id?: string | null }) => {
+      const i = patches.findIndex((x) => x.id === p.id);
+      if (i >= 0) patches[i] = { ...patches[i], ...p };
+      else patches.push(p);
+    };
+    for (const l of links) {
+      const source = afterReconcile.find((o) => o.id === l.openingId);
+      if (!source) continue;
+      add({ id: l.openingId, target_room_id: l.targetRoomId });
+      if (l.partnerId) add({ id: l.partnerId, target_room_id: source.room_id, wall_offset: l.mirror.offset });
+      else {
+        const target = nextMap.get(l.mirror.roomId);
+        if (!target) continue;
+        createOpening({
+          id: `tmp-opening-${++seq.current}`,
+          room_id: l.mirror.roomId,
+          wall: l.mirror.wall,
+          wall_offset: l.mirror.offset,
+          width: l.mirror.widthM / wallLength(l.mirror.wall, target),
+          width_m: l.mirror.widthM,
+          kind: source.kind,
+          target_room_id: source.room_id,
+          created_at: new Date().toISOString(),
+        });
+      }
+    }
+    applyOpeningPatches(patches);
+    if (links.length > 0) {
+      const names = [...new Set(links.map((l) => nextMap.get(l.targetRoomId)?.title ?? "neighbour"))].join(", ");
+      setNotice(`Linked ${links.length} doorway${links.length === 1 ? "" : "s"} to ${names}`);
+    }
     return true;
   }
 
@@ -433,6 +484,37 @@ export function GridEditor({
     })();
   }
 
+  /** Persist an optimistic (tmp-id) opening; swaps in the saved id or drops it on failure. */
+  function persistOpening(o: Opening) {
+    const p = (async () => {
+      const roomId = await resolveId(o.room_id);
+      const target = o.target_room_id ? await resolveId(o.target_room_id) : null;
+      const saved = await track(
+        backend.createOpening({
+          room_id: roomId,
+          wall: o.wall,
+          wall_offset: o.wall_offset,
+          width_m: o.width_m ?? DEFAULT_OPENING_WIDTH_M[o.kind],
+          kind: o.kind,
+          target_room_id: target,
+        })
+      );
+      idMap.current.set(o.id, saved.id);
+      setOpenings((os) => os.map((x) => (x.id === o.id ? { ...x, id: saved.id, room_id: roomId, target_room_id: target } : x)));
+      setSelection((s) => (s?.type === "opening" && s.id === o.id ? { type: "opening", id: saved.id } : s));
+      return saved.id;
+    })().catch(() => {
+      setOpenings((os) => os.filter((x) => x.id !== o.id));
+      return null;
+    });
+    creating.current.set(o.id, p);
+  }
+
+  function createOpening(o: Opening) {
+    setOpenings((os) => [...os, o]);
+    persistOpening(o);
+  }
+
   function placeOpening(plan: OpeningPlan, kind: OpeningKind) {
     const room = roomById.get(plan.roomId);
     if (!room) return;
@@ -455,25 +537,8 @@ export function GridEditor({
     const b = plan.link ? mk(`tmp-opening-${++seq.current}`, plan.link.roomId, plan.link.wall, plan.link.offset, plan.roomId) : null;
     setOpenings((os) => [...os, a, ...(b ? [b] : [])]);
     setSelection({ type: "opening", id: a.id });
-    const persist = (o: Opening) => {
-      const p = (async () => {
-        const roomId = await resolveId(o.room_id);
-        const target = o.target_room_id ? await resolveId(o.target_room_id) : null;
-        const saved = await track(
-          backend.createOpening({ room_id: roomId, wall: o.wall, wall_offset: o.wall_offset, width_m: o.width_m ?? plan.widthM, kind, target_room_id: target })
-        );
-        idMap.current.set(o.id, saved.id);
-        setOpenings((os) => os.map((x) => (x.id === o.id ? { ...x, id: saved.id, room_id: roomId, target_room_id: target } : x)));
-        setSelection((s) => (s?.type === "opening" && s.id === o.id ? { type: "opening", id: saved.id } : s));
-        return saved.id;
-      })().catch(() => {
-        setOpenings((os) => os.filter((x) => x.id !== o.id));
-        return null;
-      });
-      creating.current.set(o.id, p);
-    };
-    persist(a);
-    if (b) persist(b);
+    persistOpening(a);
+    if (b) persistOpening(b);
     if (plan.link) setNotice(`Linked ${kind} to "${roomById.get(plan.link.roomId)?.title ?? "neighbour"}"`);
   }
 
@@ -874,7 +939,7 @@ export function GridEditor({
                 setSelection(null);
               }}
               className={`rounded-t-lg border-b-2 px-3 py-1.5 text-sm ${
-                l.id === activeLevel?.id ? "border-primary font-semibold text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
+                l.id === activeLevel?.id ? "border-primary font-semibold text-link" : "border-transparent text-muted-foreground hover:text-foreground"
               }`}
             >
               {l.name}
@@ -935,12 +1000,15 @@ export function GridEditor({
                     y={-(rect.z + rect.d)}
                     width={rect.w}
                     height={rect.d}
-                    fill={r.background ?? "var(--card)"}
-                    fillOpacity={0.92}
-                    stroke={invalid ? "var(--destructive)" : sel ? "var(--primary)" : "var(--foreground)"}
+                    fill="var(--card)"
+                    fillOpacity={0.95}
+                    stroke={invalid ? "var(--destructive)" : sel ? "var(--primary)" : "var(--muted-foreground)"}
                     strokeWidth={sel ? 3 : 2}
                     vectorEffect="non-scaling-stroke"
                   />
+                  {r.background && (
+                    <rect x={rect.x} y={-(rect.z + rect.d)} width={rect.w} height={rect.d} fill={r.background} fillOpacity={0.22} pointerEvents="none" />
+                  )}
                   <text x={rect.x + rect.w / 2} y={-(rect.z + rect.d / 2)} textAnchor="middle" fontSize={px(13)} fontWeight={600} fill="var(--foreground)" pointerEvents="none">
                     {r.title}
                   </text>
@@ -1172,7 +1240,7 @@ function RoomPanel({
   saved: boolean;
   onRename: (title: string) => void;
   onGeometry: (rect: Rect, height: number) => boolean;
-  onTheme: (bg: string) => void;
+  onTheme: (bg: string | null) => void;
   onDelete: () => void;
   onPreview?: () => void;
 }) {
@@ -1212,8 +1280,17 @@ function RoomPanel({
       </div>
       {err && <p className="text-xs text-destructive">{err}</p>}
       <div className="flex gap-1.5">
-        {THEMES.map((t) => (
-          <button key={t} onClick={() => onTheme(t)} title={`Floor ${t}`} aria-label={`Floor colour ${t}`} className={`h-6 w-6 rounded-full border-2 ${room.background === t ? "border-primary" : "border-foreground/20"}`} style={{ background: t }} />
+        {ROOM_COLORS.map((t) => (
+          <button
+            key={t.name}
+            type="button"
+            onClick={() => onTheme(t.value)}
+            title={`Room colour: ${t.name}`}
+            aria-label={`Room colour ${t.name}`}
+            aria-pressed={(room.background ?? null) === t.value}
+            className={`h-6 w-6 rounded-full border-2 ${(room.background ?? null) === t.value ? "border-primary ring-2 ring-ring/40" : "border-border"}`}
+            style={{ background: t.value ?? "var(--card)" }}
+          />
         ))}
       </div>
       <div className="flex flex-wrap gap-2 pt-1 text-sm">

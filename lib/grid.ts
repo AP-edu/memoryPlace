@@ -361,3 +361,53 @@ export function gridLines(min: number, max: number, step: number, maxLines = 400
 export function fmtM(n: number): string {
   return `${Math.round(n * 100) / 100} m`;
 }
+
+export interface AutoLink {
+  /** Unlinked opening that now sits fully on a wall shared with `targetRoomId`. */
+  openingId: string;
+  targetRoomId: string;
+  /** Existing unlinked opening on the neighbour's side to pair with, or null (create `mirror`). */
+  partnerId: string | null;
+  /** Where the neighbour's half of the doorway goes (also used to realign `partnerId`). */
+  mirror: { roomId: string; wall: WallFace; offset: number; widthM: number };
+}
+
+/**
+ * After `changedRoomId` moved/resized, link doorways that now land on a shared
+ * wall: any unlinked opening of the changed room (or of a room it now touches)
+ * whose span lies fully on the shared stretch gets linked. An unlinked opening
+ * already overlapping on the other side is paired (and realigned); otherwise a
+ * mirror opening is created. Run after reconcileLinks.
+ */
+export function autoLinks(changedRoomId: string, rooms: PlacementRoom[], openings: LinkableOpening[]): AutoLink[] {
+  const out: AutoLink[] = [];
+  const used = new Set<string>();
+  const rectOf = new Map(rooms.map((r) => [r.id, r.rect]));
+  for (const o of openings) {
+    if (o.target_room_id || used.has(o.id)) continue;
+    const self = rectOf.get(o.room_id);
+    if (!self) continue;
+    const link = findLinkTarget(rooms, o.room_id, o.wall, o.wall_offset, o.widthM);
+    if (!link) continue;
+    if (o.room_id !== changedRoomId && link.roomId !== changedRoomId) continue;
+    const other = rectOf.get(link.roomId)!;
+    const span = openingSpan(self, o.wall, o.wall_offset, o.widthM);
+    const overlapping = openings.filter((p) => {
+      if (p.room_id !== link.roomId || p.wall !== link.wall || p.id === o.id) return false;
+      const s = openingSpan(other, p.wall, p.wall_offset, p.widthM);
+      return s.from < span.to - EPS && s.to > span.from + EPS;
+    });
+    // Something already linked (to anyone) is in the way: leave it alone.
+    if (overlapping.some((p) => p.target_room_id || used.has(p.id))) continue;
+    const partner = overlapping[0] ?? null;
+    used.add(o.id);
+    if (partner) used.add(partner.id);
+    out.push({
+      openingId: o.id,
+      targetRoomId: link.roomId,
+      partnerId: partner?.id ?? null,
+      mirror: { roomId: link.roomId, wall: link.wall, offset: link.offset, widthM: o.widthM },
+    });
+  }
+  return out;
+}

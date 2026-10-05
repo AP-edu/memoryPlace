@@ -31,7 +31,7 @@ export default function ProfilePage() {
         <span
           className={`rounded-full px-3 py-1 text-xs font-medium ${
             session.user.role === "admin"
-              ? "bg-accent/15 text-accent"
+              ? "bg-accent/15 text-highlight"
               : "bg-muted text-muted-foreground"
           }`}
         >
@@ -53,7 +53,7 @@ export default function ProfilePage() {
           <p className="text-sm text-muted-foreground">Quizzes taken</p>
         </div>
         <div className="card-base p-4 text-center">
-          <p className="font-display text-2xl font-semibold text-primary">
+          <p className="font-display text-2xl font-semibold text-link">
             {avgPct !== null ? `${avgPct}%` : "–"}
           </p>
           <p className="text-sm text-muted-foreground">Avg score</p>

@@ -2,46 +2,100 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/*
+ * Design tokens. Quizlet-inspired, more black and blue: near-black/indigo
+ * surfaces, an electric indigo primary, and a sparing yellow highlight.
+ * Every colour in the UI (and the 3D scene via --scene-*) comes from here.
+ * Contrast (WCAG AA, >= 4.5:1 for body text), measured for each fg/bg pair:
+ *   dark : foreground/background 18.2, muted-fg/card 7.3, link/card 6.5,
+ *          white on primary 5.3, white on primary-hover 4.6, destructive/card 6.0
+ *   light: foreground/background 18.2, muted-fg/card 6.2, link/card 6.4,
+ *          white on primary 5.3, highlight/card 5.9, destructive/background 5.2
+ * Primary hover is #5163ff rather than #5a6bff: white text on #5a6bff is
+ * only 4.2:1.
+ */
 :root {
-  --background: #f7f2e7;
-  --foreground: #292217;
-  --card: #fffdf5;
-  --card-foreground: #292217;
-  --muted: #ece4d2;
-  --muted-foreground: #8a7f6a;
-  --border: #e3d9c2;
-  --primary: #0f766e;
-  --primary-foreground: #f0fdfa;
-  --accent: #b45309;
-  --accent-foreground: #fffbeb;
-  --destructive: #b91c1c;
-  --ring: #14b8a6;
-  --glow: radial-gradient(1200px 600px at 50% -15%, rgb(15 118 110 / 0.1), transparent 60%),
-    radial-gradient(800px 500px at 100% 100%, rgb(180 83 9 / 0.07), transparent 60%);
-  --shadow-card: 0 1px 2px rgb(41 34 23 / 0.05), 0 6px 20px -10px rgb(41 34 23 / 0.16);
-  --shadow-card-hover: 0 2px 4px rgb(41 34 23 / 0.06), 0 14px 30px -14px rgb(41 34 23 / 0.28);
+  color-scheme: light;
+  --background: #f5f6fb;
+  --background-2: #eceef8;
+  --foreground: #0a0b14;
+  --card: #ffffff;
+  --card-foreground: #0a0b14;
+  --muted: #eceef8;
+  --muted-foreground: #586079;
+  --border: #dde1f0;
+  --primary: #4255ff;
+  --primary-hover: #3446f0;
+  --primary-foreground: #ffffff;
+  --link: #3446f0;
+  --accent: #ffcd1f;
+  --accent-foreground: #1a1500;
+  --highlight: #8a5a00;
+  --destructive: #c8213f;
+  --destructive-foreground: #ffffff;
+  --success: #12805c;
+  --success-foreground: #ffffff;
+  --ring: #4255ff;
+  --glow: radial-gradient(1200px 600px at 50% -15%, rgb(66 85 255 / 0.1), transparent 60%),
+    radial-gradient(800px 500px at 100% 100%, rgb(60 207 207 / 0.06), transparent 60%);
+  --shadow-card: 0 1px 2px rgb(18 20 39 / 0.05), 0 8px 24px -12px rgb(18 20 39 / 0.18);
+  --shadow-card-hover: 0 2px 4px rgb(18 20 39 / 0.06), 0 16px 32px -14px rgb(18 20 39 / 0.28);
+
+  /* 3D scene */
+  --scene-sky: #e6e9f7;
+  --scene-fog: #e6e9f7;
+  --scene-floor: #d6dbef;
+  --scene-wall: #f4f5fb;
+  --scene-door: #f0b400;
+  --scene-archway: #13a8a8;
+  --scene-locus: #4255ff;
+  --scene-locus-active: #ffb800;
+  --scene-path: #4255ff;
+  --scene-grid: #c3c9e4;
 }
 
 .dark {
-  --background: #16120d;
-  --foreground: #efe3cf;
-  --card: #211a13;
-  --card-foreground: #efe3cf;
-  --muted: #2c2319;
-  --muted-foreground: #a39680;
-  --border: #3a2f22;
-  --primary: #2dd4bf;
-  --primary-foreground: #06201b;
-  --accent: #fbbf24;
-  --accent-foreground: #2b1c00;
-  --destructive: #f87171;
-  --ring: #2dd4bf;
-  --glow: radial-gradient(1200px 600px at 50% -15%, rgb(45 212 191 / 0.09), transparent 60%),
-    radial-gradient(800px 500px at 100% 100%, rgb(251 191 36 / 0.05), transparent 60%);
+  color-scheme: dark;
+  --background: #0a0b14;
+  --background-2: #121427;
+  --foreground: #f5f6ff;
+  --card: #1a1d3a;
+  --card-foreground: #f5f6ff;
+  --muted: #252a52;
+  --muted-foreground: #a7abc7;
+  --border: #2c3163;
+  --primary: #4255ff;
+  --primary-hover: #5163ff;
+  --primary-foreground: #ffffff;
+  --link: #8f9bff;
+  --accent: #ffcd1f;
+  --accent-foreground: #1a1500;
+  --highlight: #ffcd1f;
+  --destructive: #ff6b81;
+  --destructive-foreground: #0a0b14;
+  --success: #3ddc97;
+  --success-foreground: #0a0b14;
+  --ring: #8f9bff;
+  --glow: radial-gradient(1200px 600px at 50% -15%, rgb(66 85 255 / 0.18), transparent 60%),
+    radial-gradient(800px 500px at 100% 100%, rgb(60 207 207 / 0.06), transparent 60%);
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px -12px rgb(0 0 0 / 0.6);
+  --shadow-card-hover: 0 2px 4px rgb(0 0 0 / 0.45), 0 16px 32px -14px rgb(66 85 255 / 0.35);
+
+  --scene-sky: #0a0b14;
+  --scene-fog: #0a0b14;
+  --scene-floor: #262b57;
+  --scene-wall: #4a52a3;
+  --scene-door: #ffcd1f;
+  --scene-archway: #3ccfcf;
+  --scene-locus: #5a6bff;
+  --scene-locus-active: #ffcd1f;
+  --scene-path: #8f9bff;
+  --scene-grid: #232858;
 }
 
 @theme inline {
   --color-background: var(--background);
+  --color-background-2: var(--background-2);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
@@ -49,16 +103,23 @@
   --color-muted-foreground: var(--muted-foreground);
   --color-border: var(--border);
   --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
   --color-primary-foreground: var(--primary-foreground);
+  --color-link: var(--link);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-highlight: var(--highlight);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
   --color-ring: var(--ring);
-  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", monospace;
-  --font-display: var(--font-fraunces), Georgia, "Times New Roman", serif;
+  --font-display: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
   --shadow-card: var(--shadow-card);
   --shadow-card-hover: var(--shadow-card-hover);
+  --radius-card: 1rem;
 }
 
 body {
@@ -66,41 +127,47 @@ body {
   background-image: var(--glow);
   background-attachment: fixed;
   color: var(--foreground);
-  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
   transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 h1,
 h2,
 h3 {
-  font-family: var(--font-fraunces), Georgia, "Times New Roman", serif;
-  letter-spacing: -0.015em;
+  font-family: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
 ::selection {
-  background: color-mix(in srgb, var(--primary) 25%, transparent);
+  background: color-mix(in srgb, var(--primary) 30%, transparent);
+}
+
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
 
 @utility btn-primary {
-  @apply inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50;
+  @apply inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover disabled:pointer-events-none disabled:opacity-50;
 }
 
 @utility btn-outline {
-  @apply inline-flex items-center justify-center gap-2 rounded-lg border border-primary/35 px-4 py-2 text-sm font-medium text-primary transition-colors hover:bg-primary/10;
+  @apply inline-flex items-center justify-center gap-2 rounded-xl border-2 border-border px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:border-primary hover:text-link disabled:pointer-events-none disabled:opacity-50;
 }
 
 @utility btn-ghost {
-  @apply inline-flex items-center gap-1 text-sm font-medium text-muted-foreground transition-colors hover:text-primary;
+  @apply inline-flex items-center gap-1 rounded-lg text-sm font-medium text-muted-foreground transition-colors hover:text-link disabled:pointer-events-none;
 }
 
 @utility btn-danger {
-  @apply inline-flex items-center gap-1 text-sm font-medium text-destructive transition-colors hover:underline;
+  @apply inline-flex items-center justify-center gap-1 text-sm font-medium text-destructive transition-colors hover:underline disabled:opacity-50;
 }
 
 @utility input-base {
-  @apply w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none transition placeholder:text-muted-foreground/70 focus:border-primary/60 focus:ring-2 focus:ring-ring/30;
+  @apply w-full rounded-xl border-2 border-border bg-card px-3 py-2 text-sm text-foreground outline-none transition placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-ring/30;
 }
 
 @utility card-base {
-  @apply rounded-xl border border-border bg-card text-card-foreground shadow-card transition-shadow;
+  @apply rounded-2xl border border-border bg-card text-card-foreground shadow-card transition-shadow;
 }
