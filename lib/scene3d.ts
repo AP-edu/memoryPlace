@@ -222,7 +222,7 @@ export interface TourStop<L, C> {
  */
 export function buildTourStops<
   L extends Pick<Locus, "id" | "position" | "created_at">,
-  C extends { id: string; locus_id: string; created_at: string },
+  C extends { id: string; locus_id: string; created_at: string; position?: number | null },
 >(loci: L[], cards: C[]): Array<TourStop<L, C>> {
   const byLocus = new Map<string, C[]>();
   for (const c of cards) {
@@ -230,8 +230,11 @@ export function buildTourStops<
     list.push(c);
     byLocus.set(c.locus_id, list);
   }
+  const posOf = (c: C) => (typeof c.position === "number" ? c.position : Number.MAX_SAFE_INTEGER);
   return tourOrder(loci).flatMap((locus, locusIndex): Array<TourStop<L, C>> => {
-    const list = (byLocus.get(locus.id) ?? []).sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id));
+    const list = (byLocus.get(locus.id) ?? []).sort(
+      (a, b) => posOf(a) - posOf(b) || a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id)
+    );
     if (list.length === 0) return [{ key: locus.id, locus, card: null, locusIndex }];
     return list.map((card) => ({ key: `${locus.id}:${card.id}`, locus, card, locusIndex }));
   });

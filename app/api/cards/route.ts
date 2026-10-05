@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { supabase } from "@/lib/supabase";
+import { validateOptionsInput } from "@/lib/quiz";
 
 async function locusRoom(locusId: string) {
   const { data: locus } = await supabase.from("loci").select("id, room_id").eq("id", locusId).single();
@@ -23,7 +24,8 @@ export async function GET(req: NextRequest) {
       .from("cards")
       .select("*")
       .eq("locus_id", locusId)
-      .order("created_at", { ascending: false });
+      .order("position", { ascending: true })
+      .order("created_at", { ascending: true });
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json(data);
   }
@@ -36,7 +38,8 @@ export async function GET(req: NextRequest) {
       .from("cards")
       .select("*")
       .in("locus_id", ids)
-      .order("created_at", { ascending: false });
+      .order("position", { ascending: true })
+      .order("created_at", { ascending: true });
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json(data);
   }
@@ -54,19 +57,32 @@ export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { locus_id, front, back, type } = await req.json();
+  const { locus_id, front, back, type, options } = await req.json();
   if (!locus_id || !front || !back) {
     return NextResponse.json({ error: "locus_id, front, and back required" }, { status: 400 });
   }
   if (type !== undefined && !["basic", "cloze", "image", "audio"].includes(type)) {
     return NextResponse.json({ error: "Invalid card type" }, { status: 400 });
   }
+  const backText = typeof back === "string" ? back : typeof back?.text === "string" ? back.text : "";
+  const opt = validateOptionsInput(options, backText);
+  if (!opt.ok) return NextResponse.json({ error: opt.error }, { status: 400 });
 
   const room = await locusRoom(locus_id);
   if (!room) return NextResponse.json({ error: "Locus not found" }, { status: 404 });
   if (session.user.role !== "admin" && room.user_id !== session.user.id) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
+
+  // Append to the end of the locus study order (mirrors loci POST).
+  const { data: last } = await supabase
+    .from("cards")
+    .select("position")
+    .eq("locus_id", locus_id)
+    .order("position", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const nextPosition = typeof last?.position === "number" ? last.position + 1 : 0;
 
   const { data, error } = await supabase
     .from("cards")
@@ -76,6 +92,8 @@ export async function POST(req: NextRequest) {
       type: type ?? "basic",
       front: typeof front === "string" ? { text: front } : front,
       back: typeof back === "string" ? { text: back } : back,
+      options: opt.value.length > 0 ? opt.value : null,
+      position: nextPosition,
     })
     .select()
     .single();

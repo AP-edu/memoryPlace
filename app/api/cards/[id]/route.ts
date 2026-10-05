@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { supabase } from "@/lib/supabase";
 import { canModify } from "@/lib/ownership";
+import { validateOptionsInput } from "@/lib/quiz";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -38,14 +39,33 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
   const owner = await cardOwner(id);
   if (!owner || !canModify(session, owner)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const { front, back, type } = await req.json();
+  const { front, back, type, options, position } = await req.json();
   if (type !== undefined && !["basic", "cloze", "image", "audio"].includes(type)) {
     return NextResponse.json({ error: "Invalid card type" }, { status: 400 });
+  }
+  if (position !== undefined && (!Number.isInteger(position) || position < 0)) {
+    return NextResponse.json({ error: "Invalid position" }, { status: 400 });
   }
   const updates: Record<string, unknown> = {};
   if (front !== undefined) updates.front = typeof front === "string" ? { text: front } : front;
   if (back !== undefined) updates.back = typeof back === "string" ? { text: back } : back;
   if (type !== undefined) updates.type = type;
+  if (position !== undefined) updates.position = position;
+  if (options !== undefined) {
+    const merged = {
+      front: back !== undefined ? back : card.front,
+      back: back !== undefined ? back : card.back,
+    };
+    const backText =
+      typeof merged.back === "string"
+        ? merged.back
+        : typeof merged.back?.text === "string"
+          ? merged.back.text
+          : "";
+    const opt = validateOptionsInput(options, backText);
+    if (!opt.ok) return NextResponse.json({ error: opt.error }, { status: 400 });
+    updates.options = opt.value.length > 0 ? opt.value : null;
+  }
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
   }

@@ -118,11 +118,8 @@ export default function PalacePage() {
             <Link href={`/walk/${previewRoom.id}?tour=1`} className="btn-outline px-3 py-1.5">
               Tour the loci
             </Link>
-            <Link href={`/rooms/${previewRoom.id}?view=3d`} className="btn-ghost">
-              Edit in 3D
-            </Link>
             <Link href={`/rooms/${previewRoom.id}`} className="btn-ghost">
-              Loci &amp; cards (2D)
+              Edit room
             </Link>
           </div>
         </div>
@@ -131,32 +128,35 @@ export default function PalacePage() {
       {liveRooms.length > 0 && (
         <>
           <h2 className="mb-3 mt-8 text-xl font-semibold">Rooms</h2>
-          <ul className="divide-y divide-border rounded-lg border border-border">
+          <div className="grid gap-3 sm:grid-cols-2">
             {liveRooms
               .filter((r) => !r.id.startsWith("tmp-"))
               .map((r) => (
-                <li key={r.id} className="flex flex-wrap items-center gap-3 px-4 py-2 text-sm">
-                  <span className="font-medium">{r.title}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {levelName(r)} · {r.width} × {r.depth} × {r.height} m
-                  </span>
-                  <span className="ml-auto flex gap-2">
-                    <Link href={`/rooms/${r.id}`} className="btn-ghost">
-                      Loci &amp; cards
+                <div key={r.id} className="card-base p-4">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="truncate font-medium">{r.title}</span>
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      {r.width} × {r.depth} × {r.height} m
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{levelName(r)}</p>
+                  <div className="mt-3 flex flex-wrap gap-2 text-sm">
+                    <Link href={`/rooms/${r.id}`} className="btn-outline !px-3 !py-1.5">
+                      Edit room
                     </Link>
-                    <Link href={`/study/${r.id}`} className="btn-ghost">
-                      Study
+                    <Link href={`/walk/${r.id}?tour=1`} className="btn-primary !px-3 !py-1.5">
+                      Tour
                     </Link>
                     <Link href={`/walk/${r.id}`} className="btn-ghost">
                       Walk
                     </Link>
                     <button onClick={() => setPreviewRoomId(r.id)} className="btn-ghost">
-                      3D
+                      3D preview
                     </button>
-                  </span>
-                </li>
+                  </div>
+                </div>
               ))}
-          </ul>
+          </div>
         </>
       )}
     </div>

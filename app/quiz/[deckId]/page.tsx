@@ -1,7 +1,9 @@
 "use client";
 import { useState } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useFetch } from "@/hooks/useFetch";
+import Markdown from "@/components/Markdown";
 import type { Deck, Flashcard } from "@/types/database";
 
 const ROMAN: [number, string][] = [
@@ -89,7 +91,12 @@ export default function QuizPage() {
 
   return (
     <div className="mx-auto max-w-lg p-4 sm:p-6">
-      <p className="mb-1 text-center text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
+      {deckId && (
+        <Link href={`/decks/${deckId}`} className="btn-ghost">
+          {"\u2190 Back to deck"}
+        </Link>
+      )}
+      <p className="mb-1 mt-3 text-center text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
         {deck.title}
       </p>
       <p className="mb-5 text-center font-display text-lg text-highlight">
@@ -99,9 +106,9 @@ export default function QuizPage() {
       <div className="card-base relative overflow-hidden p-10 text-center">
         <div className="absolute inset-x-0 top-0 h-1.5 bg-linear-to-r from-primary via-accent to-primary" />
         <div className="flex min-h-40 items-center justify-center">
-          <p className="text-xl font-medium leading-relaxed">
-            {showAnswer ? card.answer : card.question}
-          </p>
+          <div className="text-xl font-medium leading-relaxed">
+            <Markdown text={showAnswer ? card.answer : card.question} />
+          </div>
         </div>
       </div>
 

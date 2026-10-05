@@ -3,6 +3,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useFetch } from "@/hooks/useFetch";
+import Markdown from "@/components/Markdown";
 import type { Deck, Flashcard } from "@/types/database";
 
 function DeckPage() {
@@ -70,6 +71,12 @@ function DeckPage() {
       <h1 className="mb-1 mt-3 text-3xl font-semibold">{deck?.title ?? "Deck"} Flashcards</h1>
       <p className="mb-5 text-sm text-muted-foreground">The keepsakes you place inside.</p>
 
+      {(cards?.length ?? 0) > 0 && (
+        <Link href={`/quiz/${id}`} className="btn-primary mb-4 inline-block">
+          Straight quiz →
+        </Link>
+      )}
+
       <form onSubmit={handleCreate} className="mb-4 flex flex-col gap-2">
         <input
           value={question}
@@ -92,7 +99,7 @@ function DeckPage() {
       {cards?.length === 0 && <p className="text-muted-foreground">No flashcards yet — add one above.</p>}
 
       <div className="space-y-3">
-        {cards?.map((card) => (
+        {cards?.map((card, i) => (
           <div key={card.id} className="card-base p-4">
             {editingId === card.id ? (
               <div className="flex flex-col gap-2">
@@ -117,9 +124,18 @@ function DeckPage() {
               </div>
             ) : (
               <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="font-medium">{card.question}</p>
-                  <p className="text-sm text-muted-foreground">{card.answer}</p>
+                <div className="flex min-w-0 flex-1 items-start gap-3">
+                  <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-accent/15 text-xs font-bold text-highlight">
+                    {i + 1}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="font-medium">
+                      <Markdown text={card.question} />
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      <Markdown text={card.answer} />
+                    </div>
+                  </div>
                 </div>
                 <div className="flex shrink-0 gap-3 text-sm">
                   <button onClick={() => handleEdit(card)} className="btn-ghost">

@@ -24,7 +24,7 @@ Order of delivery from the vision docs; each phase ends green on tsc + eslint +
   wall/wall_offset/height, openings + card_reviews tables, throwaway R3F
   `/spike-3d/[roomId]` spike validating the geometry. DONE.
 - B. Blueprint builder (2D): Palace Overview 2D Blueprint + Room Editor +
-  Loci Placement Panel. No legacy dependencies.
+  Loci Placement Panel. No legacy dependencies. DONE.
 - C. SRS + due engine (card_reviews), resurfacing into study/quiz. DONE.
 - D. Spatial quiz (walk-and-answer at loci) replaces deck quiz. MCQ is hybrid:
   stored options when authored, else auto-derive distractors from sibling cards.
@@ -35,6 +35,7 @@ Order of delivery from the vision docs; each phase ends green on tsc + eslint +
   DONE.
 - G. Drop legacy courses/decks/flashcards tags + OAuth (Google real, Apple stub)
   + export/printable blueprint + onboarding (guided tour folded in here).
+  (The /quiz deck route is retained for the courses straight-quiz flow.)
 
 ## Geometry convention (Phase A, source of truth for B/F)
 
