@@ -1,19 +1,139 @@
 "use client";
+import { useState } from "react";
 import Link from "next/link";
+import { useParams, useRouter } from "next/navigation";
+import { useFetch } from "@/hooks/useFetch";
+import Markdown from "@/components/Markdown";
+import type { Deck, Flashcard } from "@/types/database";
 
-// Phase D: the legacy deck quiz is replaced by spatial walk-and-answer tours.
-// This route now points at the palace flow; the file itself is deleted in Phase G.
+const ROMAN: [number, string][] = [
+  [50, "L"],
+  [40, "XL"],
+  [10, "X"],
+  [9, "IX"],
+  [5, "V"],
+  [4, "IV"],
+  [1, "I"],
+];
+
+function toRoman(n: number) {
+  let out = "";
+  let v = n;
+  for (const [k, s] of ROMAN) {
+    while (v >= k) {
+      out += s;
+      v -= k;
+    }
+  }
+  return out;
+}
+
 export default function QuizPage() {
-  return (
-    <div className="mx-auto max-w-lg p-6 text-center">
-      <p className="mb-2 text-lg font-semibold">Deck quizzes have moved</p>
-      <p className="mb-4 text-sm text-muted-foreground">
-        Quizzes now happen as walk-and-answer tours inside your palace — glide to each
-        locus, pick the answer, and your reviews are saved the same way.
+  const { deckId } = useParams<{ deckId: string }>();
+  const router = useRouter();
+  const { data: cards, loading, error } = useFetch<Flashcard[]>(
+    deckId ? `/api/flashcards?deck=${deckId}` : null
+  );
+  const { data: deck, loading: loadingDeck, error: deckError } = useFetch<Deck>(
+    deckId ? `/api/decks/${deckId}` : null
+  );
+  const [index, setIndex] = useState(0);
+  const [showAnswer, setShowAnswer] = useState(false);
+  const [score, setScore] = useState(0);
+
+  if (!deckId) return <p className="p-6">This quiz link is missing a deck id.</p>;
+  if (loading || loadingDeck) return <p className="p-6 text-muted-foreground">Loading quiz...</p>;
+
+  if (!deck) {
+    return (
+      <p className="p-6">
+        This deck could not be found{deckError ? ` (${deckError})` : ""}.
       </p>
-      <Link href="/palaces" className="btn-primary">
-        Open my palaces
-      </Link>
+    );
+  }
+
+  if (error) return <p className="p-6 text-destructive">Failed to load quiz: {error}</p>;
+
+  if (!cards?.length) {
+    return (
+      <div className="mx-auto max-w-lg p-6 text-center">
+        <p className="mb-2 text-sm text-muted-foreground">{deck.title}</p>
+        <p className="text-lg">This deck has no flashcards yet.</p>
+      </div>
+    );
+  }
+
+  const card = cards[index];
+  const isLast = index === cards.length - 1;
+
+  async function handleAnswer(correct: boolean) {
+    if (!deckId || !cards) return;
+    const nextScore = correct ? score + 1 : score;
+    setScore(nextScore);
+
+    if (isLast) {
+      try {
+        const res = await fetch("/api/quiz-results", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ deck_id: deckId, score: nextScore, total: cards.length }),
+        });
+        if (!res.ok) console.error("Failed to save quiz result");
+      } catch {
+        console.error("Failed to save quiz result");
+      }
+      router.push(`/results?score=${nextScore}&total=${cards.length}`);
+    } else {
+      setIndex(index + 1);
+      setShowAnswer(false);
+    }
+  }
+
+  return (
+    <div className="mx-auto max-w-lg p-4 sm:p-6">
+      {deckId && (
+        <Link href={`/decks/${deckId}`} className="btn-ghost">
+          {"\u2190 Back to deck"}
+        </Link>
+      )}
+      <p className="mb-1 mt-3 text-center text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
+        {deck.title}
+      </p>
+      <p className="mb-5 text-center font-display text-lg text-highlight">
+        Chamber {toRoman(index + 1)} of {toRoman(cards.length)}
+      </p>
+
+      <div className="card-base relative overflow-hidden p-10 text-center">
+        <div className="absolute inset-x-0 top-0 h-1.5 bg-linear-to-r from-primary via-accent to-primary" />
+        <div className="flex min-h-40 items-center justify-center">
+          <div className="text-xl font-medium leading-relaxed">
+            <Markdown text={showAnswer ? card.answer : card.question} />
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-6 flex justify-center">
+        {!showAnswer ? (
+          <button onClick={() => setShowAnswer(true)} className="btn-primary">
+            Show Answer
+          </button>
+        ) : (
+          <div className="flex gap-3">
+            <button
+              onClick={() => handleAnswer(false)}
+              className="rounded-xl bg-destructive px-5 py-2 text-sm font-semibold text-destructive-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+            >
+              Got it wrong
+            </button>
+            <button
+              onClick={() => handleAnswer(true)}
+              className="rounded-xl bg-success px-5 py-2 text-sm font-semibold text-success-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+            >
+              Got it right
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -39,14 +39,18 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
   const owner = await cardOwner(id);
   if (!owner || !canModify(session, owner)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const { front, back, type, options } = await req.json();
+  const { front, back, type, options, position } = await req.json();
   if (type !== undefined && !["basic", "cloze", "image", "audio"].includes(type)) {
     return NextResponse.json({ error: "Invalid card type" }, { status: 400 });
+  }
+  if (position !== undefined && (!Number.isInteger(position) || position < 0)) {
+    return NextResponse.json({ error: "Invalid position" }, { status: 400 });
   }
   const updates: Record<string, unknown> = {};
   if (front !== undefined) updates.front = typeof front === "string" ? { text: front } : front;
   if (back !== undefined) updates.back = typeof back === "string" ? { text: back } : back;
   if (type !== undefined) updates.type = type;
+  if (position !== undefined) updates.position = position;
   if (options !== undefined) {
     const merged = {
       front: back !== undefined ? back : card.front,

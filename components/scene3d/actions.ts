@@ -22,7 +22,7 @@ export interface LociActions {
   setPositions(updates: Array<{ id: string; position: number }>): Promise<void>;
   deleteLocus(id: string): Promise<void>;
   createCard(input: { locus_id: string; front: string; back: string; options?: string[] }): Promise<void>;
-  updateCard(id: string, patch: { front: string; back: string; options?: string[] }): Promise<void>;
+  updateCard(id: string, patch: { front?: string; back?: string; options?: string[]; position?: number }): Promise<void>;
   deleteCard(id: string): Promise<void>;
 }
 

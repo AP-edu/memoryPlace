@@ -1124,8 +1124,13 @@ export function GridEditor({
               {l.name}
             </button>
           ))}
-          <button onClick={addLevel} className="btn-ghost !px-2 !py-1 text-sm" title="Add a level above the top one">
-            + Level
+          <span className="mx-1 h-5 w-px bg-border" aria-hidden />
+          <button
+            onClick={addLevel}
+            className="rounded-lg border border-dashed border-primary/60 px-3 py-1.5 text-sm font-medium text-link transition-colors hover:bg-primary/10"
+            title="Add a level above the top one"
+          >
+            + Add level
           </button>
         </div>
 

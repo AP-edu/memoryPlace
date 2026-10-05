@@ -72,9 +72,16 @@ export default function WalkPage() {
       autoTour={tourParam}
       className="h-[calc(100dvh-3.5rem)]"
       actions={
-        <Link href={`/rooms/${room.id}?view=3d`} className="btn-outline bg-card">
-          {"\u2190"} Edit room
-        </Link>
+        <>
+          {room.palace_id && (
+            <Link href={`/palaces/${room.palace_id}`} className="btn-outline bg-card">
+              {"\u2190"} Palace
+            </Link>
+          )}
+          <Link href={`/rooms/${room.id}`} className="btn-outline bg-card">
+            Edit room
+          </Link>
+        </>
       }
     />
   );

@@ -7,6 +7,7 @@ import { cardBack, cardFront } from "@/types/database";
 import { wallLength } from "@/lib/geometry";
 import { anchorFromPoint, reorderPositions, toScene, tourOrder, type WallAnchor } from "@/lib/scene3d";
 import { LocusMarkers, RoomShell, SceneLights, type WallPointerEvent } from "./RoomShell";
+import { SceneGate } from "./SceneBoundary";
 import { useSceneColors } from "./useSceneColors";
 import type { LociActions } from "./actions";
 
@@ -225,13 +226,26 @@ export default function Room3DEditor({
     if (updates.length) void run(() => actions.setPositions(updates));
   }
 
+  function moveCard(locusId: string, id: string, dir: -1 | 1) {
+    // Normalise missing positions to the end (creation order) so legacy rows reorder sanely.
+    const list = cards
+      .filter((c) => c.locus_id === locusId)
+      .map((c, i) => ({ ...c, position: typeof c.position === "number" ? c.position : 1000 + i }));
+    const updates = reorderPositions(list, id, dir);
+    if (updates.length) void run(() => Promise.all(updates.map((u) => actions.updateCard(u.id, { position: u.position }))));
+  }
+
   const camDist = Math.max(room.width, room.depth) * 1.15 + 3;
   const target = toScene({ x: room.width / 2, y: room.height * 0.35, z: room.depth / 2 });
+  const palaceHref = `/palaces/${room.palace_id}`;
 
   return (
     <div className={`grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px] ${className}`}>
       <div className="relative select-none overflow-hidden rounded-2xl border border-border bg-card" style={{ height }}>
-        <Canvas
+        <SceneGate title="3D editor couldn't start" backHref={palaceHref} backLabel="Back to palace blueprint">
+          <Canvas
+          dpr={[1, 2]}
+          gl={{ antialias: true, powerPreference: "high-performance", failIfMajorPerformanceCaveat: false }}
           camera={{ position: toScene({ x: room.width / 2 + camDist * 0.35, y: camDist * 0.75, z: room.depth / 2 - camDist * 0.8 }), fov: 50 }}
           onPointerMissed={() => tool === "select" && !dragging && setSelectedId(null)}
           onPointerLeave={() => setHover(null)}
@@ -263,7 +277,8 @@ export default function Room3DEditor({
           )}
           <gridHelper args={[Math.max(room.width, room.depth) * 3, Math.max(room.width, room.depth) * 3, colors.grid, colors.grid]} position={[room.width / 2, -0.11, -room.depth / 2]} />
           <OrbitControls makeDefault enabled={!dragging} target={target} maxPolarAngle={Math.PI / 2.05} minDistance={2} maxDistance={camDist * 2.5} />
-        </Canvas>
+          </Canvas>
+        </SceneGate>
         <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-wrap items-center gap-2 p-3">
           <div className="pointer-events-auto inline-flex rounded-xl border border-border bg-card/90 p-1 text-sm shadow-sm backdrop-blur">
             {(["select", "place"] as Tool[]).map((t) => (
@@ -355,6 +370,7 @@ export default function Room3DEditor({
             }
             onCreateCard={(front, back, options) => run(() => actions.createCard({ locus_id: selected.id, front, back, options }))}
             onUpdateCard={(id, front, back, options) => run(() => actions.updateCard(id, { front, back, options }))}
+            onMoveCard={(id, dir) => moveCard(selected.id, id, dir)}
             onDeleteCard={(id) => run(() => actions.deleteCard(id))}
           />
         )}
@@ -373,6 +389,7 @@ function LocusDetails({
   onDelete,
   onCreateCard,
   onUpdateCard,
+  onMoveCard,
   onDeleteCard,
 }: {
   room: Room;
@@ -384,6 +401,7 @@ function LocusDetails({
   onDelete: () => void;
   onCreateCard: (front: string, back: string, options?: string[]) => Promise<void>;
   onUpdateCard: (id: string, front: string, back: string, options?: string[]) => Promise<void>;
+  onMoveCard: (id: string, dir: -1 | 1) => void;
   onDeleteCard: (id: string) => Promise<void>;
 }) {
   const [label, setLabel] = useState(locus.label);
@@ -435,7 +453,7 @@ function LocusDetails({
       <div className="space-y-2">
         <h4 className="text-sm font-semibold">Flashcards</h4>
         {cards.length === 0 && <p className="text-xs text-muted-foreground">Attach what you want to remember at this spot.</p>}
-        {cards.map((c) =>
+        {cards.map((c, ci) =>
           editing?.id === c.id ? (
             <div key={c.id} className="space-y-1 rounded-xl border border-border p-2">
               <input aria-label="Card front" className="input-base" value={editing.front} onChange={(e) => setEditing({ ...editing, front: e.target.value })} />
@@ -452,11 +470,24 @@ function LocusDetails({
             </div>
           ) : (
             <div key={c.id} className="group rounded-xl border border-border bg-muted p-2 text-sm">
-              <p className="font-medium">{cardFront(c)}</p>
-              <p className="text-muted-foreground">{cardBack(c)}</p>
+              <div className="flex items-start gap-2">
+                <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-accent/15 text-[11px] font-bold text-highlight">
+                  {ci + 1}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium">{cardFront(c)}</p>
+                  <p className="text-muted-foreground">{cardBack(c)}</p>
+                </div>
+              </div>
               <div className="mt-1 flex gap-3 text-xs">
                 <button type="button" className="text-link hover:underline" onClick={() => setEditing({ id: c.id, front: cardFront(c), back: cardBack(c), options: cardOptionsText(c) })}>
                   Edit
+                </button>
+                <button type="button" className="hover:underline disabled:opacity-40" disabled={ci === 0} onClick={() => onMoveCard(c.id, -1)} aria-label="Move card earlier">
+                  {"\u2191"}
+                </button>
+                <button type="button" className="hover:underline disabled:opacity-40" disabled={ci === cards.length - 1} onClick={() => onMoveCard(c.id, 1)} aria-label="Move card later">
+                  {"\u2193"}
                 </button>
                 <button type="button" className="text-destructive hover:underline" onClick={() => onDeleteCard(c.id)}>
                   Delete

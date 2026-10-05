@@ -5,6 +5,7 @@ import type { Locus, Opening, Room } from "@/types/database";
 import { toScene } from "@/lib/scene3d";
 import { LocusMarkers, RoomShell, SceneLights } from "./RoomShell";
 import { useSceneColors } from "./useSceneColors";
+import { SceneGate } from "./SceneBoundary";
 
 /** Read-only orbit view of a room with its numbered study path. */
 export default function Room3DViewer({
@@ -26,7 +27,10 @@ export default function Room3DViewer({
   const d = Math.max(room.width, room.depth) * 1.1 + 3;
   return (
     <div className={`w-full overflow-hidden rounded-2xl border border-border ${className}`}>
-      <Canvas
+      <SceneGate title="3D preview couldn't start">
+        <Canvas
+          dpr={[1, 2]}
+          gl={{ antialias: true, powerPreference: "high-performance", failIfMajorPerformanceCaveat: false }}
         camera={{ position: toScene({ x: room.width / 2 + d * 0.35, y: d * 0.75, z: room.depth / 2 - d * 0.8 }), fov: 50 }}
         onPointerMissed={() => onSelect?.(null)}
       >
@@ -48,8 +52,9 @@ export default function Room3DViewer({
               : undefined
           }
         />
-        <OrbitControls makeDefault target={toScene({ x: room.width / 2, y: room.height * 0.35, z: room.depth / 2 })} maxPolarAngle={Math.PI / 2.05} />
-      </Canvas>
+          <OrbitControls makeDefault target={toScene({ x: room.width / 2, y: room.height * 0.35, z: room.depth / 2 })} maxPolarAngle={Math.PI / 2.05} />
+        </Canvas>
+      </SceneGate>
     </div>
   );
 }

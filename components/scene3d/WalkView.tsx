@@ -37,6 +37,8 @@ import {
   type TourStop,
 } from "@/lib/scene3d";
 import { LocusMarkers, RoomShell, SceneLights } from "./RoomShell";
+import { SceneGate } from "./SceneBoundary";
+import Markdown from "@/components/Markdown";
 import { useSceneColors } from "./useSceneColors";
 import { buildChoices } from "@/lib/quiz";
 
@@ -614,7 +616,12 @@ export default function WalkView({
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
       >
-        <Canvas camera={{ fov: 70, near: 0.05, far: 120 }}>
+        <SceneGate title="Walk mode couldn't start" backHref={`/palaces/${room.palace_id}`} backLabel="Back to palace blueprint">
+          <Canvas
+            dpr={[1, 2]}
+            gl={{ antialias: true, powerPreference: "high-performance", failIfMajorPerformanceCaveat: false }}
+            camera={{ fov: 70, near: 0.05, far: 120 }}
+          >
           <color attach="background" args={[colors.sky]} />
           <fog attach="fog" args={[colors.fog, 12, 40]} />
           <SceneLights colors={colors} />
@@ -636,7 +643,8 @@ export default function WalkView({
             onExit={(o) => onExitDoor?.(o)}
             onNearDoor={setNearDoor}
           />
-        </Canvas>
+          </Canvas>
+        </SceneGate>
       </div>
 
       <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-wrap items-start justify-between gap-2 p-4">
@@ -688,9 +696,17 @@ export default function WalkView({
             </div>
             {stop.card ? (
               <>
-                <p className="text-xl font-semibold leading-snug">{cardFront(stop.card)}</p>
+                <div className="text-xl font-semibold leading-snug">
+                  <Markdown text={cardFront(stop.card)} />
+                </div>
                 {tour.revealed ? (
-                  <p className="mt-3 rounded-xl border border-primary/30 bg-primary/10 p-3 text-base">{cardBack(stop.card) || <em className="text-muted-foreground">No answer written</em>}</p>
+                  <div className="mt-3 rounded-xl border border-primary/30 bg-primary/10 p-3 text-base">
+                    {cardBack(stop.card) ? (
+                      <Markdown text={cardBack(stop.card)} />
+                    ) : (
+                      <em className="text-muted-foreground">No answer written</em>
+                    )}
+                  </div>
                 ) : mcq && !mcq.fallback ? (
                   <div className="mt-3 flex flex-col gap-2" role="group" aria-label="Answer choices">
                     {mcq.choices.map((choice, i) => (
@@ -780,9 +796,13 @@ export default function WalkView({
               <div className="flex flex-col gap-2">
                 {focusedCards.map((card) => (
                   <div key={card.id} className="rounded-xl border border-border p-3">
-                    <p className="font-medium">{cardFront(card)}</p>
+                    <div className="font-medium">
+                      <Markdown text={cardFront(card)} />
+                    </div>
                     {revealedCards[card.id] ? (
-                      <p className="mt-1 text-sm text-link">{cardBack(card)}</p>
+                      <div className="mt-1 text-sm text-link">
+                        <Markdown text={cardBack(card)} />
+                      </div>
                     ) : (
                       <button type="button" onClick={() => setRevealedCards((r) => ({ ...r, [card.id]: true }))} className="btn-outline mt-2 !px-3 !py-1.5 !text-xs">
                         Reveal answer

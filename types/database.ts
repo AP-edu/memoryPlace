@@ -163,6 +163,8 @@ export interface Card {
   back: { text?: string; [key: string]: unknown };
   /** Authored MCQ distractors (wrong answers). Null/empty = auto-derive. */
   options?: string[] | null;
+  /** Study order within the locus (0..n-1, mirrors loci.position). */
+  position?: number | null;
   media_refs: unknown[];
   created_at: string;
 }

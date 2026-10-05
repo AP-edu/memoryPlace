@@ -24,7 +24,8 @@ export async function GET(req: NextRequest) {
       .from("cards")
       .select("*")
       .eq("locus_id", locusId)
-      .order("created_at", { ascending: false });
+      .order("position", { ascending: true })
+      .order("created_at", { ascending: true });
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json(data);
   }
@@ -37,7 +38,8 @@ export async function GET(req: NextRequest) {
       .from("cards")
       .select("*")
       .in("locus_id", ids)
-      .order("created_at", { ascending: false });
+      .order("position", { ascending: true })
+      .order("created_at", { ascending: true });
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json(data);
   }
@@ -72,6 +74,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  // Append to the end of the locus study order (mirrors loci POST).
+  const { data: last } = await supabase
+    .from("cards")
+    .select("position")
+    .eq("locus_id", locus_id)
+    .order("position", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const nextPosition = typeof last?.position === "number" ? last.position + 1 : 0;
+
   const { data, error } = await supabase
     .from("cards")
     .insert({
@@ -81,6 +93,7 @@ export async function POST(req: NextRequest) {
       front: typeof front === "string" ? { text: front } : front,
       back: typeof back === "string" ? { text: back } : back,
       options: opt.value.length > 0 ? opt.value : null,
+      position: nextPosition,
     })
     .select()
     .single();
