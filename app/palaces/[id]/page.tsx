@@ -29,6 +29,9 @@ export default function PalacePage() {
   // Openings as edited in the grid editor, so the 3D preview shows door edits live.
   const [liveOpenings, setLiveOpenings] = useState<Opening[]>([]);
   const [previewRoomId, setPreviewRoomId] = useState<string | null>(null);
+  // Canvas <-> cards selection sync: lit from the grid editor, cleared when
+  // the canvas selection moves to a door or nothing.
+  const [highlightedRoomId, setHighlightedRoomId] = useState<string | null>(null);
 
   useEffect(() => {
     if (palace && !seeded.current) {
@@ -63,6 +66,14 @@ export default function PalacePage() {
 
   const previewRoom = liveRooms.find((r) => r.id === previewRoomId && !r.id.startsWith("tmp-")) ?? null;
   const levelName = (r: Room) => liveLevels.find((l) => l.id === r.level_id)?.name ?? liveLevels[0]?.name ?? "";
+  const sortedLevels = [...liveLevels].sort((a, b) => a.idx - b.idx);
+  const roomsByLevel = new Map<string | null, Room[]>();
+  for (const r of liveRooms.filter((x) => !x.id.startsWith("tmp-"))) {
+    const key = liveLevels.some((l) => l.id === r.level_id) ? r.level_id : null;
+    const list = roomsByLevel.get(key) ?? [];
+    list.push(r);
+    roomsByLevel.set(key, list);
+  }
 
   return (
     <div className="mx-auto max-w-7xl p-4 sm:p-6">
@@ -97,6 +108,8 @@ export default function PalacePage() {
           backend={httpBackend}
           onRoomsChange={onRoomsChange}
           onPreviewRoom={setPreviewRoomId}
+          selectedRoomId={highlightedRoomId}
+          onSelectRoom={setHighlightedRoomId}
         />
       ) : (
         <p className="text-muted-foreground">Loading blueprint…</p>
@@ -126,38 +139,50 @@ export default function PalacePage() {
       )}
 
       {liveRooms.length > 0 && (
-        <>
-          <h2 className="mb-3 mt-8 text-xl font-semibold">Rooms</h2>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {liveRooms
-              .filter((r) => !r.id.startsWith("tmp-"))
-              .map((r) => (
-                <div key={r.id} className="card-base p-4">
-                  <div className="flex items-baseline justify-between gap-2">
-                    <span className="truncate font-medium">{r.title}</span>
-                    <span className="shrink-0 text-xs text-muted-foreground">
-                      {r.width} × {r.depth} × {r.height} m
-                    </span>
-                  </div>
-                  <p className="mt-0.5 text-xs text-muted-foreground">{levelName(r)}</p>
-                  <div className="mt-3 flex flex-wrap gap-2 text-sm">
-                    <Link href={`/rooms/${r.id}`} className="btn-outline !px-3 !py-1.5">
-                      Edit room
-                    </Link>
-                    <Link href={`/walk/${r.id}?tour=1`} className="btn-primary !px-3 !py-1.5">
-                      Tour
-                    </Link>
-                    <Link href={`/walk/${r.id}`} className="btn-ghost">
-                      Walk
-                    </Link>
-                    <button onClick={() => setPreviewRoomId(r.id)} className="btn-ghost">
-                      3D preview
-                    </button>
-                  </div>
-                </div>
-              ))}
-          </div>
-        </>
+        <div className="mt-8">
+          <h2 className="mb-3 text-xl font-semibold">Rooms</h2>
+          {[...roomsByLevel.entries()].map(([levelId, rs]) => (
+            <div key={levelId ?? "none"} className="mb-5">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.15em] text-muted-foreground">
+                {levelId ? (liveLevels.find((l) => l.id === levelId)?.name ?? "Level") : sortedLevels.length > 0 ? "No level" : "Rooms"}
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {rs.map((r) => {
+                  const lit = r.id === highlightedRoomId;
+                  return (
+                    <div
+                      key={r.id}
+                      onClick={() => setHighlightedRoomId(lit ? null : r.id)}
+                      className={`card-base cursor-pointer p-4 transition-colors ${lit ? "border-primary ring-2 ring-primary/50" : "hover:border-primary/40"}`}
+                    >
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="truncate font-medium">{r.title}</span>
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          {r.width} × {r.depth} × {r.height} m
+                        </span>
+                      </div>
+                      <p className="mt-0.5 text-xs text-muted-foreground">{levelName(r)}</p>
+                      <div className="mt-3 flex flex-wrap gap-2 text-sm" onClick={(e) => e.stopPropagation()}>
+                        <Link href={`/rooms/${r.id}`} className="btn-outline !px-3 !py-1.5">
+                          Edit room
+                        </Link>
+                        <Link href={`/walk/${r.id}?tour=1`} className="btn-primary !px-3 !py-1.5">
+                          Tour
+                        </Link>
+                        <Link href={`/walk/${r.id}`} className="btn-ghost">
+                          Walk
+                        </Link>
+                        <button onClick={() => setPreviewRoomId(r.id)} className="btn-ghost">
+                          3D preview
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
