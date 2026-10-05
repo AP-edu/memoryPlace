@@ -74,3 +74,24 @@ a live check (see Roadmap). `/check` runs the fast three.
 - vitest for tests
 - 3D convention: pure logic in `lib/` (see `lib/walk.ts`), R3F scenes kept
   separate — never mix scene code into geometry/logic modules
+
+## Machine split (laptop vs PC)
+
+Two machines share this repo. Respect what each can do well.
+
+- **Laptop:** 2D canvas work, API routes, quiz/SRS logic, text UI, pure `lib/`
+  modules + vitest. Fast checks only: `npx tsc --noEmit` + `npm run lint` +
+  `npm run test` (see `/check`).
+- **PC (strong machine):** anything that adds geometry, markers, or `<Html>`
+  labels to a scene; `npm run build`; FPS + live-click verification of 3D
+  (Playwright software WebGL on weak GPUs is slow and flaky); R3F dev-server
+  iteration.
+- Never run `npm audit fix --force` — it changes major versions and has broken
+  the build before (eslint-config-next 16→14 broke flat-config lint; vitest
+  3→5 gave unresolvable peers). Fix vulnerabilities with deliberate upgrades.
+
+## End of session
+
+Every session ends with the PC swap: run `/handoff` (push, state summary,
+what's verified vs what needs the PC). Laptops sessions never close out 3D
+work as green — that verdict belongs to the PC after build + live check.
