@@ -38,6 +38,7 @@ import {
 } from "@/lib/scene3d";
 import { LocusMarkers, RoomShell, SceneLights } from "./RoomShell";
 import { useSceneColors } from "./useSceneColors";
+import { buildChoices } from "@/lib/quiz";
 
 // First-person walk mode + guided tour. Movement/collision/focus/tour maths
 // live in lib/walk.ts and lib/scene3d.ts (pure, unit-tested); this file is
@@ -454,6 +455,21 @@ export default function WalkView({
     [tour, stop, stops, onGrade, glideTo]
   );
 
+  // Phase D: MCQ choices for the current stop (stable per stop — memoized so
+  // the shuffle doesn't re-roll every render). Null when no card; fallback
+  // when fewer than 2 choices exist (self-grade path instead).
+  const mcq = useMemo(
+    () => (stop?.card ? buildChoices(stop.card, cards) : null),
+    [stop, cards]
+  );
+  const choose = useCallback(
+    (i: number) => {
+      if (!tour || !stop?.card || !mcq || mcq.fallback || tour.revealed) return;
+      grade(i === mcq.answerIndex);
+    },
+    [tour, stop, mcq, grade]
+  );
+
   const autoStarted = useRef(false);
   useEffect(() => {
     if (autoTour && !autoStarted.current && stops.length > 0) {
@@ -463,10 +479,10 @@ export default function WalkView({
   }, [autoTour, stops.length, startTour]);
 
   // ---------------------------------------------------------------- input
-  const tourRef = useRef({ tour, stop, goto, grade, startTour, stepNav });
+  const tourRef = useRef({ tour, stop, goto, grade, startTour, stepNav, choose, mcq });
   useEffect(() => {
-    tourRef.current = { tour, stop, goto, grade, startTour, stepNav };
-  }, [tour, stop, goto, grade, startTour, stepNav]);
+    tourRef.current = { tour, stop, goto, grade, startTour, stepNav, choose, mcq };
+  }, [tour, stop, goto, grade, startTour, stepNav, choose, mcq]);
   useEffect(() => {
     const syncKeys = () => {
       const k = keysRef.current;
@@ -478,9 +494,9 @@ export default function WalkView({
     const down = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
-      const { tour: tr, stop: st, goto: go, grade: gr, startTour: start, stepNav: step } = tourRef.current;
+      const { tour: tr, stop: st, goto: go, grade: gr, startTour: start, stepNav: step, choose: ch, mcq: mq } = tourRef.current;
       if (tr) {
-        // Tour keys: Space/Enter reveal, ←/→ step, 1/2 grade, Esc leave.
+        // Tour keys: Space/Enter reveal, ←/→ step, 1-4 answer MCQ, 1/2 grade, Esc leave.
         if (e.code === "Space" || e.code === "Enter") {
           e.preventDefault();
           if (!tr.revealed) setTour({ ...tr, revealed: true });
@@ -493,6 +509,8 @@ export default function WalkView({
           go(tr.index - 1);
         } else if (e.code === "Escape") {
           setTour(null);
+        } else if (!tr.revealed && mq && !mq.fallback && st?.card && ["1", "2", "3", "4"].includes(e.key)) {
+          ch(Number(e.key) - 1);
         } else if (tr.revealed && st?.card && (e.key === "1" || e.key === "2")) {
           gr(e.key === "1");
         }
@@ -673,6 +691,16 @@ export default function WalkView({
                 <p className="text-xl font-semibold leading-snug">{cardFront(stop.card)}</p>
                 {tour.revealed ? (
                   <p className="mt-3 rounded-xl border border-primary/30 bg-primary/10 p-3 text-base">{cardBack(stop.card) || <em className="text-muted-foreground">No answer written</em>}</p>
+                ) : mcq && !mcq.fallback ? (
+                  <div className="mt-3 flex flex-col gap-2" role="group" aria-label="Answer choices">
+                    {mcq.choices.map((choice, i) => (
+                      <button key={i} type="button" onClick={() => choose(i)} className="btn-outline justify-start !py-2.5 text-left">
+                        <kbd className="mr-2 rounded bg-muted px-1.5 text-[10px]">{i + 1}</kbd>
+                        {choice}
+                      </button>
+                    ))}
+                    <p className="text-sm text-muted-foreground">Picture it at this spot, then choose.</p>
+                  </div>
                 ) : (
                   <p className="mt-3 text-sm text-muted-foreground">Picture it at this spot, then reveal.</p>
                 )}
@@ -685,9 +713,14 @@ export default function WalkView({
                 {"\u2190"} Prev
               </button>
               <div className="flex-1" />
-              {stop.card && !tour.revealed && (
+              {stop.card && !tour.revealed && (!mcq || mcq.fallback) && (
                 <button type="button" className="btn-primary" onClick={() => setTour({ ...tour, revealed: true })}>
                   Reveal <kbd className="ml-1 rounded bg-primary-foreground/20 px-1 text-[10px]">Space</kbd>
+                </button>
+              )}
+              {stop.card && !tour.revealed && mcq && !mcq.fallback && (
+                <button type="button" className="btn-ghost" onClick={() => setTour({ ...tour, revealed: true })}>
+                  Reveal instead
                 </button>
               )}
               {stop.card && tour.revealed && (

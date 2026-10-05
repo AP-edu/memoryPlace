@@ -117,9 +117,20 @@ export default function RoomPage() {
 
   const [front, setFront] = useState("");
   const [back, setBack] = useState("");
+  // Optional MCQ distractors, comma-separated (up to 3). Empty = auto-derive.
+  const [options, setOptions] = useState("");
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
   const [editFront, setEditFront] = useState("");
   const [editBack, setEditBack] = useState("");
+  const [editOptions, setEditOptions] = useState("");
+
+  function splitOptions(raw: string): string[] {
+    return raw
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .slice(0, 3);
+  }
 
   // Openings
   const [newOpeningWall, setNewOpeningWall] = useState<WallFace>("north");
@@ -247,12 +258,13 @@ export default function RoomPage() {
     const res = await fetch("/api/cards", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ locus_id: selected.id, front, back }),
+      body: JSON.stringify({ locus_id: selected.id, front, back, options: splitOptions(options) }),
     });
     if (!res.ok) return setFormError("Failed to add card.");
     setFormError(null);
     setFront("");
     setBack("");
+    setOptions("");
     refetchCards();
   }
 
@@ -260,7 +272,7 @@ export default function RoomPage() {
     const res = await fetch(`/api/cards/${cardId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ front: editFront, back: editBack }),
+      body: JSON.stringify({ front: editFront, back: editBack, options: splitOptions(editOptions) }),
     });
     if (!res.ok) return setFormError("Failed to save card.");
     setFormError(null);
@@ -687,6 +699,12 @@ export default function RoomPage() {
                   <input value={back} onChange={(e) => setBack(e.target.value)} placeholder="Card back" className="input-base flex-1" />
                   <button className="btn-primary">Add card</button>
                 </div>
+                <input
+                  value={options}
+                  onChange={(e) => setOptions(e.target.value)}
+                  placeholder="Wrong answers, comma-separated, up to 3 (optional)"
+                  className="input-base"
+                />
               </form>
               <div className="flex flex-col gap-2">
                 {selectedCards.length === 0 && <p className="text-sm text-muted-foreground">No cards on this locus yet.</p>}
@@ -696,6 +714,12 @@ export default function RoomPage() {
                       <div className="flex flex-col gap-2">
                         <input value={editFront} onChange={(e) => setEditFront(e.target.value)} className="input-base" />
                         <input value={editBack} onChange={(e) => setEditBack(e.target.value)} className="input-base" />
+                        <input
+                          value={editOptions}
+                          onChange={(e) => setEditOptions(e.target.value)}
+                          placeholder="Wrong answers, comma-separated, up to 3 (optional)"
+                          className="input-base"
+                        />
                         <div className="flex gap-3 text-sm">
                           <button onClick={() => saveCard(card.id)} className="btn-primary !px-3 !py-1.5">
                             Save
@@ -710,6 +734,11 @@ export default function RoomPage() {
                         <div>
                           <p className="font-medium">{cardFront(card)}</p>
                           <p className="text-sm text-muted-foreground">{cardBack(card)}</p>
+                          {Array.isArray(card.options) && card.options.length > 0 && (
+                            <p className="text-xs text-muted-foreground">
+                              Choices: {card.options.filter((o) => typeof o === "string").join(" · ")}
+                            </p>
+                          )}
                         </div>
                         <div className="flex shrink-0 gap-3 text-sm">
                           <button
@@ -717,6 +746,11 @@ export default function RoomPage() {
                               setEditingCardId(card.id);
                               setEditFront(cardFront(card));
                               setEditBack(cardBack(card));
+                              setEditOptions(
+                                Array.isArray(card.options)
+                                  ? card.options.filter((o) => typeof o === "string").join(", ")
+                                  : ""
+                              );
                             }}
                             className="btn-ghost"
                           >

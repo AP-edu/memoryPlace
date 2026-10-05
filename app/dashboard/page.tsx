@@ -94,8 +94,8 @@ export default function Dashboard() {
                   <span className="font-display text-lg font-medium text-link">
                     {r.score} / {r.total}
                   </span>
-                  <Link href={`/quiz/${r.deck_id}`} className="btn-ghost">
-                    Retake
+                  <Link href="/palaces" className="btn-ghost">
+                    Walk instead
                   </Link>
                 </div>
               </div>
@@ -104,7 +104,7 @@ export default function Dashboard() {
         </div>
       ) : (
         <p className="text-muted-foreground">
-          No quizzes yet — open a course, pick a deck, and hit Study.
+          No quizzes yet — open a palace and start a walk tour.
         </p>
       )}
     </div>

@@ -61,8 +61,8 @@ function CoursePage() {
           <div key={deck.id} className="card-base flex items-center justify-between p-4">
             <span className="font-display text-lg font-medium">{deck.title}</span>
             <div className="flex items-center gap-4 text-sm">
-              <Link href={`/quiz/${deck.id}`} className="btn-primary `px-3` `py-1.5`">
-                Study
+              <Link href="/palaces" className="btn-primary `px-3` `py-1.5`">
+                Walk a palace
               </Link>
               <Link href={`/decks/${deck.id}`} className="btn-ghost">
                 Manage cards

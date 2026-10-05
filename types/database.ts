@@ -161,6 +161,8 @@ export interface Card {
   type: CardType;
   front: { text?: string; [key: string]: unknown };
   back: { text?: string; [key: string]: unknown };
+  /** Authored MCQ distractors (wrong answers). Null/empty = auto-derive. */
+  options?: string[] | null;
   media_refs: unknown[];
   created_at: string;
 }
@@ -181,4 +183,19 @@ export function cardFront(card: Card): string {
 
 export function cardBack(card: Card): string {
   return typeof card.back?.text === "string" ? card.back.text : "";
+}
+
+/** Authored distractors, normalized (non-empty strings, max 3). */
+export function cardDistractors(card: Card): string[] {
+  if (!Array.isArray(card.options)) return [];
+  const correct = cardBack(card).trim().toLowerCase();
+  const out: string[] = [];
+  for (const o of card.options) {
+    if (typeof o !== "string") continue;
+    const t = o.trim();
+    if (!t || t.toLowerCase() === correct) continue;
+    if (!out.some((x) => x.toLowerCase() === t.toLowerCase())) out.push(t);
+    if (out.length >= 3) break;
+  }
+  return out;
 }
