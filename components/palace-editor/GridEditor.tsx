@@ -133,6 +133,10 @@ export interface GridEditorProps {
   selectedRoomId?: string | null;
   /** Reports canvas room selection outward (null when cleared or non-room). */
   onSelectRoom?: (id: string | null) => void;
+  /** Controlled active level (e.g. shared with a 3D palace tab). Uncontrolled when omitted. */
+  activeLevelId?: string | null;
+  /** Reports active-level changes outward. */
+  onActiveLevelChange?: (id: string | null) => void;
 }
 
 export function GridEditor({
@@ -145,6 +149,8 @@ export function GridEditor({
   onPreviewRoom,
   selectedRoomId,
   onSelectRoom,
+  activeLevelId: controlledLevelId,
+  onActiveLevelChange,
 }: GridEditorProps) {
   const [levels, setLevels] = useState<Level[]>(() => [...initialLevels].sort(byIdx));
   const [rooms, setRooms] = useState<Room[]>(initialRooms);
@@ -158,7 +164,14 @@ export function GridEditor({
     () => null
   );
   const gridSnap = chosenSnap ?? storedSnap ?? DEFAULT_SNAP;
-  const [activeLevelId, setActiveLevelId] = useState<string | null>(() => [...initialLevels].sort(byIdx)[0]?.id ?? null);
+  const [innerLevelId, setInnerLevelId] = useState<string | null>(() => [...initialLevels].sort(byIdx)[0]?.id ?? null);
+  // Controlled active level: the page can own it (shared with the 3D tab);
+  // every internal change still reports outward via onActiveLevelChange.
+  const activeLevelId = controlledLevelId !== undefined ? controlledLevelId : innerLevelId;
+  const setActiveLevelId = (id: string | null) => {
+    if (controlledLevelId === undefined) setInnerLevelId(id);
+    onActiveLevelChange?.(id);
+  };
   const [tool, setTool] = useState<Tool>("select");
   const [selection, setSelection] = useState<Selection>(null);
   // Selection sync with outside UI (room cards below the canvas): report

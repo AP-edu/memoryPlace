@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useFetch } from "@/hooks/useFetch";
@@ -7,6 +8,12 @@ import type { Level, Opening, Palace, Room } from "@/types/database";
 import { Room3DPreview } from "@/components/palace/Room3DPreview";
 import { GridEditor } from "@/components/palace-editor/GridEditor";
 import { httpBackend } from "@/components/palace-editor/backend";
+
+// three.js is client-only and heavy: load the 3D palace tab on demand.
+const Palace3DView = dynamic(() => import("@/components/palace/Palace3DView"), {
+  ssr: false,
+  loading: () => <div className="h-[560px] animate-pulse rounded-lg border border-border bg-card" />,
+});
 
 // Palace Overview: the 2D grid editor is the main builder (rooms, levels,
 // doors). Loci and cards are still edited per room at /rooms/[id].
@@ -32,6 +39,10 @@ export default function PalacePage() {
   // Canvas <-> cards selection sync: lit from the grid editor, cleared when
   // the canvas selection moves to a door or nothing.
   const [highlightedRoomId, setHighlightedRoomId] = useState<string | null>(null);
+  // 2D blueprint vs 3D palace tab. The active level is owned here so both
+  // tabs (and the room cards) share it.
+  const [view, setView] = useState<"2d" | "3d">("2d");
+  const [editorLevelId, setEditorLevelId] = useState<string | null>(null);
 
   useEffect(() => {
     if (palace && !seeded.current) {
@@ -67,6 +78,8 @@ export default function PalacePage() {
   const previewRoom = liveRooms.find((r) => r.id === previewRoomId && !r.id.startsWith("tmp-")) ?? null;
   const levelName = (r: Room) => liveLevels.find((l) => l.id === r.level_id)?.name ?? liveLevels[0]?.name ?? "";
   const sortedLevels = [...liveLevels].sort((a, b) => a.idx - b.idx);
+  const firstLiveLevelId = sortedLevels[0]?.id ?? null;
+  const activeLevelId = editorLevelId ?? firstLiveLevelId;
   const roomsByLevel = new Map<string | null, Room[]>();
   for (const r of liveRooms.filter((x) => !x.id.startsWith("tmp-"))) {
     const key = liveLevels.some((l) => l.id === r.level_id) ? r.level_id : null;
@@ -99,18 +112,64 @@ export default function PalacePage() {
         cards.
       </p>
 
+      <div className="mb-2 flex flex-wrap items-center gap-1" role="tablist" aria-label="Blueprint view">
+        {(["2d", "3d"] as const).map((v) => (
+          <button
+            key={v}
+            role="tab"
+            aria-selected={view === v}
+            onClick={() => setView(v)}
+            className={`rounded-t-lg border-b-2 px-3 py-1.5 text-sm ${
+              view === v ? "border-primary font-semibold text-link" : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {v === "2d" ? "2D Blueprint" : "3D Palace"}
+          </button>
+        ))}
+        {view === "3d" && sortedLevels.length > 1 && (
+          <>
+            <span className="mx-1 h-5 w-px bg-border" aria-hidden />
+            {[...sortedLevels].reverse().map((l) => (
+              <button
+                key={l.id}
+                onClick={() => setEditorLevelId(l.id)}
+                aria-pressed={l.id === activeLevelId}
+                className={`rounded-lg px-2 py-1 text-xs ${
+                  l.id === activeLevelId ? "bg-primary/10 font-semibold text-link" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {l.name}
+              </button>
+            ))}
+          </>
+        )}
+      </div>
+
       {ready ? (
-        <GridEditor
-          palace={palace}
-          initialLevels={levels}
-          initialRooms={rooms}
-          initialOpenings={openings}
-          backend={httpBackend}
-          onRoomsChange={onRoomsChange}
-          onPreviewRoom={setPreviewRoomId}
-          selectedRoomId={highlightedRoomId}
-          onSelectRoom={setHighlightedRoomId}
-        />
+        view === "2d" ? (
+          <GridEditor
+            palace={palace}
+            initialLevels={levels}
+            initialRooms={rooms}
+            initialOpenings={openings}
+            backend={httpBackend}
+            onRoomsChange={onRoomsChange}
+            onPreviewRoom={setPreviewRoomId}
+            selectedRoomId={highlightedRoomId}
+            onSelectRoom={setHighlightedRoomId}
+            activeLevelId={activeLevelId}
+            onActiveLevelChange={setEditorLevelId}
+          />
+        ) : (
+          <Palace3DView
+            rooms={liveRooms}
+            openings={liveOpenings}
+            levelId={activeLevelId}
+            fallbackLevelId={firstLiveLevelId}
+            selectedId={highlightedRoomId}
+            onSelect={setHighlightedRoomId}
+          />
+        )
       ) : (
         <p className="text-muted-foreground">Loading blueprint…</p>
       )}
