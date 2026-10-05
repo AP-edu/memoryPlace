@@ -236,3 +236,90 @@ export function buildTourStops<
     return list.map((card) => ({ key: `${locus.id}:${card.id}`, locus, card, locusIndex }));
   });
 }
+
+// ---------------------------------------------------------------- Street-View style navigation
+
+export type NavStop<L extends Pick<Locus, "id" | "position" | "created_at" | "wall" | "wall_offset" | "height">> =
+  | { kind: "locus"; key: string; locus: L; number: number }
+  | { kind: "door"; key: string; opening: Opening; targetRoomId: string };
+
+/** Navigation stops: loci in study order, then linked doors (so "next" after the last locus leads on). */
+export function navStops<L extends Pick<Locus, "id" | "position" | "created_at" | "wall" | "wall_offset" | "height">>(
+  loci: L[],
+  openings: Opening[]
+): Array<NavStop<L>> {
+  const lociStops = tourOrder(loci).map((locus, i) => ({ kind: "locus" as const, key: `l:${locus.id}`, locus, number: i + 1 }));
+  const doors = openings
+    .filter((o) => o.target_room_id)
+    .sort((a, b) => a.wall.localeCompare(b.wall) || (a.wall_offset ?? 0) - (b.wall_offset ?? 0))
+    .map((opening) => ({ kind: "door" as const, key: `d:${opening.id}`, opening, targetRoomId: opening.target_room_id as string }));
+  return [...lociStops, ...doors];
+}
+
+/** Next/previous stop index from `index` (-1 = not at a stop yet: next is 0, prev is the last). */
+export function navStep(length: number, index: number, dir: 1 | -1): number {
+  if (length <= 0) return -1;
+  if (index < 0) return dir === 1 ? 0 : length - 1;
+  return Math.min(length - 1, Math.max(0, index + dir));
+}
+
+/** Where the camera goes for a stop: framing a locus, or just inside a door looking out through it. */
+export function stopPose(stop: NavStop<Locus>, room: Room): Pose {
+  if (stop.kind === "locus") {
+    const p = viewPoseForLocus(stop.locus, room, 2.6);
+    return { ...p, pitch: p.pitch - 0.22 };
+  }
+  const inside = spawnAtDoor(stop.opening, room, 1.4);
+  return { ...inside, yaw: yawTo(-Math.sin(inside.yaw), -Math.cos(inside.yaw)), pitch: -0.25 };
+}
+
+/** The thing a stop is about (locus marker or door centre), which arrows point at. */
+export function stopFocus(stop: NavStop<Locus>, room: Room): { x: number; z: number } {
+  if (stop.kind === "locus") {
+    const p = locusWorldPos(stop.locus, room);
+    return { x: p.x, z: p.z };
+  }
+  return wallPoint(stop.opening.wall, stop.opening.wall_offset ?? 0.5, room);
+}
+
+export interface NavArrow {
+  stopIndex: number;
+  role: "next" | "prev" | "door";
+  /** Floor position (world) and heading the chevron points at. */
+  x: number;
+  z: number;
+  yaw: number;
+  distance: number;
+}
+
+/** Floor chevron `dist` metres from the player toward `target` (closer if the target is near). */
+export function arrowPlacement(from: { x: number; z: number }, target: { x: number; z: number }, dist = 2.4): { x: number; z: number; yaw: number; distance: number } {
+  const dx = target.x - from.x;
+  const dz = target.z - from.z;
+  const d = Math.hypot(dx, dz);
+  if (d < 1e-6) return { x: from.x, z: from.z, yaw: 0, distance: 0 };
+  // ~2.4 m ahead keeps the chevron inside a 70° view at eye height without looking down.
+  const k = Math.min(dist, d * 0.7) / d;
+  return { x: from.x + dx * k, z: from.z + dz * k, yaw: yawTo(dx, dz), distance: d };
+}
+
+/** Arrows to show: the next and previous stop, plus every linked door; none for the stop you're at. */
+export function navArrows(pose: { x: number; z: number }, stops: Array<NavStop<Locus>>, index: number, room: Room): NavArrow[] {
+  if (stops.length === 0) return [];
+  const want = new Map<number, NavArrow["role"]>();
+  const next = navStep(stops.length, index, 1);
+  const prev = navStep(stops.length, index, -1);
+  stops.forEach((s, i) => {
+    if (s.kind === "door") want.set(i, "door");
+  });
+  if (index >= 0 && prev !== index) want.set(prev, "prev");
+  if (next !== index) want.set(next, "next");
+  const out: NavArrow[] = [];
+  for (const [i, role] of want) {
+    if (i === index) continue;
+    const a = arrowPlacement(pose, stopFocus(stops[i], room));
+    if (a.distance < 0.3) continue;
+    out.push({ stopIndex: i, role, ...a });
+  }
+  return out.sort((p, q) => p.stopIndex - q.stopIndex);
+}

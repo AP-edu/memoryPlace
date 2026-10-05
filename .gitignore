@@ -40,3 +40,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .agents/skills/supabase-server/SKILL.md
+
+# local playwright mcp dumps (console/page logs, screenshots)
+.playwright-mcp/

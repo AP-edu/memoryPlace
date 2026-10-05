@@ -50,3 +50,26 @@ are a pair of openings pointing at each other via `target_room_id`.
 Loci anchor on `wall` + `wall_offset` (0..1 relative, resizes don't orphan) +
 `height` (absolute units, default 1.5). `loci.position` is the single canonical
 traversal-order authority.
+
+## Commands
+
+```bash
+npm run dev        # dev server
+npm run build      # production build
+npm run lint       # eslint
+npm run test       # vitest run (no typecheck script — use npx tsc --noEmit)
+```
+
+A phase is green on `npx tsc --noEmit` + `npm run lint` + `npm run build` +
+a live check (see Roadmap). `/check` runs the fast three.
+
+## Tech Stack
+
+- Next.js 16 (App Router) + React 19 + R3F (`@react-three/fiber`,
+  `@react-three/drei`, `three`)
+- TypeScript throughout
+- Tailwind CSS 4
+- next-auth v4 + Supabase (`@supabase/supabase-js`)
+- vitest for tests
+- 3D convention: pure logic in `lib/` (see `lib/walk.ts`), R3F scenes kept
+  separate — never mix scene code into geometry/logic modules
