@@ -129,6 +129,10 @@ export interface GridEditorProps {
   /** Called whenever the local room list changes (e.g. to render a room list beside the editor). */
   onRoomsChange?: (rooms: Room[], levels: Level[], openings: Opening[]) => void;
   onPreviewRoom?: (roomId: string) => void;
+  /** Controlled canvas selection highlight (e.g. from a room list beside the editor). */
+  selectedRoomId?: string | null;
+  /** Reports canvas room selection outward (null when cleared or non-room). */
+  onSelectRoom?: (id: string | null) => void;
 }
 
 export function GridEditor({
@@ -139,6 +143,8 @@ export function GridEditor({
   backend,
   onRoomsChange,
   onPreviewRoom,
+  selectedRoomId,
+  onSelectRoom,
 }: GridEditorProps) {
   const [levels, setLevels] = useState<Level[]>(() => [...initialLevels].sort(byIdx));
   const [rooms, setRooms] = useState<Room[]>(initialRooms);
@@ -155,6 +161,21 @@ export function GridEditor({
   const [activeLevelId, setActiveLevelId] = useState<string | null>(() => [...initialLevels].sort(byIdx)[0]?.id ?? null);
   const [tool, setTool] = useState<Tool>("select");
   const [selection, setSelection] = useState<Selection>(null);
+  // Selection sync with outside UI (room cards below the canvas): report
+  // canvas room picks outward, adopt externally requested ones. The adopt
+  // half is a render-phase update (the sanctioned sync-external-state pattern).
+  const [prevExternalRoom, setPrevExternalRoom] = useState<string | null | undefined>(undefined);
+  if (selectedRoomId !== prevExternalRoom) {
+    setPrevExternalRoom(selectedRoomId);
+    if (selectedRoomId) {
+      setSelection({ type: "room", id: selectedRoomId });
+    } else {
+      setSelection((s) => (s?.type === "room" && s.id === prevExternalRoom ? null : s));
+    }
+  }
+  useEffect(() => {
+    onSelectRoom?.(selection?.type === "room" ? selection.id : null);
+  }, [selection, onSelectRoom]);
   const [drag, setDrag] = useState<Drag | null>(null);
   const [connectFirst, setConnectFirst] = useState<string | null>(null);
   const [chooser, setChooser] = useState<Chooser | null>(null);
@@ -1109,20 +1130,36 @@ export function GridEditor({
 
         <div className="mb-2 flex flex-wrap items-center gap-1" role="tablist" aria-label="Levels">
           {[...levels].reverse().map((l) => (
-            <button
+            <span
               key={l.id}
               role="tab"
               aria-selected={l.id === activeLevel?.id}
-              onClick={() => {
-                setActiveLevelId(l.id);
-                setSelection(null);
-              }}
-              className={`rounded-t-lg border-b-2 px-3 py-1.5 text-sm ${
-                l.id === activeLevel?.id ? "border-primary font-semibold text-link" : "border-transparent text-muted-foreground hover:text-foreground"
+              className={`inline-flex items-center rounded-t-lg border-b-2 ${
+                l.id === activeLevel?.id ? "border-primary" : "border-transparent"
               }`}
             >
-              {l.name}
-            </button>
+              <button
+                onClick={() => {
+                  setActiveLevelId(l.id);
+                  setSelection(null);
+                }}
+                className={`px-3 py-1.5 text-sm ${
+                  l.id === activeLevel?.id ? "font-semibold text-link" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {l.name}
+              </button>
+              {levels.length > 1 && (
+                <button
+                  onClick={() => deleteLevel(l.id)}
+                  className="mr-1 rounded px-1 text-xs text-muted-foreground hover:text-destructive"
+                  title={`Delete ${l.name} and its rooms`}
+                  aria-label={`Delete ${l.name}`}
+                >
+                  ×
+                </button>
+              )}
+            </span>
           ))}
           <span className="mx-1 h-5 w-px bg-border" aria-hidden />
           <button
@@ -1179,7 +1216,7 @@ export function GridEditor({
             {/* rooms */}
             {visibleRooms.map((r) => {
               const rect = rectOf(r);
-              const sel = selection?.type === "room" && selection.id === r.id;
+              const sel = (selection?.type === "room" && selection.id === r.id) || selectedRoomId === r.id;
               const invalid = dragRect && drag && "id" in drag && drag.id === r.id && dragInvalid;
               const hall = isHallway(r);
               const picked = tool === "connect" && (connectFirst === r.id || chooser?.a === r.id || chooser?.b === r.id);

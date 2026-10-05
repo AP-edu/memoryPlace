@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useFetch } from "@/hooks/useFetch";
 import Markdown from "@/components/Markdown";
+import SendToPalace from "@/components/decks/SendToPalace";
 import type { Deck, Flashcard } from "@/types/database";
 
 function DeckPage() {
@@ -17,6 +18,7 @@ function DeckPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editQuestion, setEditQuestion] = useState("");
   const [editAnswer, setEditAnswer] = useState("");
+  const [sendId, setSendId] = useState<string | null>(null);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -141,10 +143,18 @@ function DeckPage() {
                   <button onClick={() => handleEdit(card)} className="btn-ghost">
                     Edit
                   </button>
+                  <button onClick={() => setSendId(sendId === card.id ? null : card.id)} className="btn-ghost">
+                    Send to palace
+                  </button>
                   <button onClick={() => handleDelete(card.id)} className="btn-danger">
                     Delete
                   </button>
                 </div>
+              </div>
+            )}
+            {sendId === card.id && (
+              <div className="mt-2">
+                <SendToPalace card={card} onClose={() => setSendId(null)} />
               </div>
             )}
           </div>
