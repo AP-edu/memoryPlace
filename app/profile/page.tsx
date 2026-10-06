@@ -1,22 +1,19 @@
 "use client";
+import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { useFetch } from "@/hooks/useFetch";
-import type { Course, Deck, QuizResult } from "@/types/database";
+import type { HomeSummary } from "@/lib/homeSummary";
 
 export default function ProfilePage() {
   const { data: session, status } = useSession();
-  const { data: courses } = useFetch<Course[]>("/api/courses");
-  const { data: decks } = useFetch<Deck[]>("/api/decks");
-  const { data: results } = useFetch<QuizResult[]>("/api/quiz-results");
+  const { data: summary } = useFetch<HomeSummary>("/api/home/summary");
 
   if (status === "loading") return <p className="p-6 text-muted-foreground">Loading...</p>;
   if (!session) return <p className="p-6 text-muted-foreground">Redirecting to login...</p>;
 
-  const lastResult = results?.[0];
-  const avgPct = results?.length
-    ? Math.round(
-        (results.reduce((sum, r) => sum + r.score / r.total, 0) / results.length) * 100
-      )
+  const cont = summary?.continueTarget ?? null;
+  const weakest = summary
+    ? [...summary.palaces].sort((a, b) => b.due - a.due || b.cards - a.cards)[0] ?? null
     : null;
 
   return (
@@ -41,34 +38,57 @@ export default function ProfilePage() {
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <div className="card-base p-4 text-center">
-          <p className="font-display text-2xl font-semibold">{courses?.length ?? "–"}</p>
-          <p className="text-sm text-muted-foreground">Courses</p>
+          <p className="font-display text-2xl font-semibold">{summary ? summary.palaces.length : "–"}</p>
+          <p className="text-sm text-muted-foreground">Palaces</p>
         </div>
         <div className="card-base p-4 text-center">
-          <p className="font-display text-2xl font-semibold">{decks?.length ?? "–"}</p>
-          <p className="text-sm text-muted-foreground">Decks</p>
+          <p className="font-display text-2xl font-semibold">{summary ? summary.totalCards : "–"}</p>
+          <p className="text-sm text-muted-foreground">Cards</p>
         </div>
         <div className="card-base p-4 text-center">
-          <p className="font-display text-2xl font-semibold">{results?.length ?? "–"}</p>
-          <p className="text-sm text-muted-foreground">Quizzes taken</p>
+          <p className="font-display text-2xl font-semibold">{summary ? summary.dueToday : "–"}</p>
+          <p className="text-sm text-muted-foreground">Due today</p>
         </div>
         <div className="card-base p-4 text-center">
           <p className="font-display text-2xl font-semibold text-link">
-            {avgPct !== null ? `${avgPct}%` : "–"}
+            {summary ? (summary.avgScore === null ? "–" : `${Math.round(summary.avgScore * 100)}%`) : "–"}
           </p>
           <p className="text-sm text-muted-foreground">Avg score</p>
         </div>
       </div>
 
-      {lastResult && (
-        <div className="card-base mt-6 p-4">
-          <p className="mb-1 text-sm text-muted-foreground">Last quiz</p>
-          <p className="font-display text-lg font-medium">
-            {lastResult.score} / {lastResult.total}
-            <span className="ml-2 text-sm font-normal text-muted-foreground">
-              on {new Date(lastResult.created_at).toLocaleDateString()}
-            </span>
-          </p>
+      <div className="card-base mt-6 p-4">
+        <p className="mb-1 text-sm text-muted-foreground">Day streak</p>
+        <p className="font-display text-lg font-medium">
+          {summary ? `${summary.streakDays} day${summary.streakDays === 1 ? "" : "s"}` : "–"}
+        </p>
+      </div>
+
+      {cont && (
+        <div className="card-base mt-6 flex items-center justify-between p-4">
+          <div>
+            <p className="mb-1 text-sm text-muted-foreground">Continue</p>
+            <p className="font-display text-lg font-medium">{cont.title}</p>
+            <p className="text-sm text-muted-foreground">
+              {cont.reviewed} of {cont.total} reviewed{cont.due > 0 ? ` · ${cont.due} due` : ""}
+            </p>
+          </div>
+          <Link href={`/study/palace/${cont.palaceId}`} className="btn-primary">
+            Study now →
+          </Link>
+        </div>
+      )}
+
+      {weakest && weakest.due > 0 && (!cont || weakest.palaceId !== cont.palaceId) && (
+        <div className="card-base mt-6 flex items-center justify-between p-4">
+          <div>
+            <p className="mb-1 text-sm text-muted-foreground">Needs reinforcement</p>
+            <p className="font-display text-lg font-medium">{weakest.title}</p>
+            <p className="text-sm text-muted-foreground">{weakest.due} due</p>
+          </div>
+          <Link href={`/study/palace/${weakest.palaceId}`} className="btn-outline">
+            Review →
+          </Link>
         </div>
       )}
     </div>

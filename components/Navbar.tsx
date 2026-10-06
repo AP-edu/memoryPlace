@@ -25,17 +25,8 @@ export default function Navbar() {
             MemoryPlace
           </Link>
           <div className="flex gap-4 text-sm">
-            <Link href="/home" className={linkClass(pathname === "/home" || pathname.startsWith("/home"))}>
+            <Link href="/home" className={linkClass(pathname === "/home" || pathname.startsWith("/home") || pathname.startsWith("/palaces") || pathname.startsWith("/rooms") || pathname.startsWith("/study") || pathname.startsWith("/walk"))}>
               Home
-            </Link>
-            <Link href="/dashboard" className={linkClass(pathname.startsWith("/dashboard"))}>
-              My Courses
-            </Link>
-            <Link
-              href="/palaces"
-              className={linkClass(pathname.startsWith("/palaces") || pathname.startsWith("/rooms") || pathname.startsWith("/study"))}
-            >
-              My Palaces
             </Link>
             <Link href="/profile" className={linkClass(pathname.startsWith("/profile"))}>
               Profile

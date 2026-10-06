@@ -8,6 +8,7 @@ import {
   navArrows,
   navStep,
   navStops,
+  orderTourStopsByCards,
   stopPose,
   cutawayWalls,
   easeInOut,
@@ -208,6 +209,24 @@ describe("tour stops", () => {
       ["e", null, 2],
     ]);
     expect(new Set(stops.map((s) => s.key)).size).toBe(4);
+  });
+
+  it("reorders stops by a due-first card order, card-less stops last in canonical order", () => {
+    const loci = [locus("b", 1), locus("a", 0), locus("e", 2)];
+    const cards = [
+      { id: "c1", locus_id: "a", created_at: "2026-01-01T00:00:00Z" },
+      { id: "c2", locus_id: "a", created_at: "2026-01-02T00:00:00Z" },
+      { id: "c3", locus_id: "b", created_at: "2026-01-01T00:00:00Z" },
+    ];
+    const stops = buildTourStops(loci, cards);
+    const ordered = orderTourStopsByCards(stops, ["c3", "c1"]);
+    expect(ordered.map((s) => s.card?.id ?? null)).toEqual(["c3", "c1", "c2", null]);
+  });
+
+  it("returns stops unchanged for an empty card order", () => {
+    const loci = [locus("a", 0)];
+    const stops = buildTourStops(loci, [{ id: "c1", locus_id: "a", created_at: "2026-01-01T00:00:00Z" }]);
+    expect(orderTourStopsByCards(stops, [])).toBe(stops);
   });
 });
 

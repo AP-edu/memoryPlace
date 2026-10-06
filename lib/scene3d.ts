@@ -217,6 +217,29 @@ export interface TourStop<L, C> {
 }
 
 /**
+ * Reorder tour stops by a due-first card order (e.g. from
+ * `sortPlayQueue(items, "due", now).map((i) => i.id)`).
+ * Stops whose card isn't in `cardOrder` (card-less loci, unknown cards)
+ * keep canonical relative order after the ordered ones. Stable.
+ */
+export function orderTourStopsByCards<S extends { card: { id: string } | null }>(
+  stops: S[],
+  cardOrder: string[]
+): S[] {
+  if (cardOrder.length === 0) return stops;
+  const rank = new Map(cardOrder.map((id, i) => [id, i]));
+  const INF = Number.MAX_SAFE_INTEGER;
+  return stops
+    .map((stop, index) => ({ stop, index }))
+    .sort((a, b) => {
+      const ra = a.stop.card ? (rank.get(a.stop.card.id) ?? INF) : INF;
+      const rb = b.stop.card ? (rank.get(b.stop.card.id) ?? INF) : INF;
+      return ra - rb || a.index - b.index;
+    })
+    .map(({ stop }) => stop);
+}
+
+/**
  * Tour stops in study order: one stop per card (cards on a locus by
  * created_at), or one card-less stop for an empty locus.
  */

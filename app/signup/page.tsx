@@ -31,7 +31,7 @@ export default function SignupPage() {
       redirect: false,
     });
 
-    if (result?.ok) router.push("/dashboard");
+    if (result?.ok) router.push("/home");
     else setError("Account created, but login failed. Try logging in manually.");
   }
 

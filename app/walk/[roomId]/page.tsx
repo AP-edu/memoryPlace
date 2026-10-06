@@ -6,6 +6,7 @@ import { useFetch } from "@/hooks/useFetch";
 import { useSearchParam } from "@/hooks/useSearchParam";
 import type { Card, Locus, Opening, Room } from "@/types/database";
 import { returnDoor, spawnAtDoor } from "@/lib/scene3d";
+import { sortPlayQueue, type QueueItem } from "@/lib/srs";
 import WalkView from "@/components/scene3d/WalkView";
 
 // First-person walk mode + guided tour. Rendering lives in
@@ -19,6 +20,16 @@ export default function WalkPage() {
   const { data: openings, loading: loadingOpenings } = useFetch<Opening[]>(roomId ? `/api/openings?room=${roomId}` : null);
   const { data: cards } = useFetch<Card[]>(roomId ? `/api/cards?room=${roomId}` : null);
   const { data: siblings } = useFetch<Room[]>(room?.palace_id ? `/api/rooms?palace=${room.palace_id}` : null);
+  // Due-first tour order, shared with the 2D study session (lib/srs.ts).
+  // Absent (or failed) reviews data falls back to canonical walk order.
+  const { data: reviewQueue } = useFetch<{ items: QueueItem[]; now: number }>(
+    roomId ? `/api/reviews?room=${roomId}` : null
+  );
+  const cardOrder = useMemo(
+    () =>
+      reviewQueue ? sortPlayQueue(reviewQueue.items, "due", reviewQueue.now).map((i) => i.id) : undefined,
+    [reviewQueue]
+  );
 
   // Where we came from (?from=<roomId>) decides the spawn door.
   const fromId = useSearchParam("from");
@@ -70,6 +81,7 @@ export default function WalkPage() {
       onExitDoor={onExitDoor}
       onGrade={onGrade}
       autoTour={tourParam}
+      cardOrder={cardOrder}
       className="h-[calc(100dvh-3.5rem)]"
       actions={
         <>

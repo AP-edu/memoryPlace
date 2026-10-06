@@ -19,7 +19,7 @@ export default function LoginPage() {
       redirect: false,
     });
 
-    if (result?.ok) router.push("/dashboard");
+    if (result?.ok) router.push("/home");
     else setError("Invalid email or password");
   }
 
