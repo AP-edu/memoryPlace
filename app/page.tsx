@@ -1,6 +1,19 @@
+"use client";
+import { useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 
 export default function Home() {
+  const { status } = useSession();
+  const router = useRouter();
+
+  // Signed-in users get the dedicated homepage; this route stays the
+  // logged-out landing.
+  useEffect(() => {
+    if (status === "authenticated") router.replace("/home");
+  }, [status, router]);
+
   return (
     <div className="mx-auto max-w-2xl px-6 pb-24 pt-28 text-center">
       <p className="mb-4 text-xs font-medium uppercase tracking-[0.25em] text-highlight">
