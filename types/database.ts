@@ -8,14 +8,6 @@ export interface User {
   created_at: string;
 }
 
-export interface Course {
-  id: string;
-  title: string;
-  description: string;
-  owner: string;
-  created_at: string;
-}
-
 export interface Deck {
   id: string;
   title: string;
@@ -52,7 +44,8 @@ export interface PasswordResetToken {
 }
 
 // Palace model (spatial rebuild). Palaces contain rooms, rooms contain loci,
-// cards attach to loci. Legacy courses/decks/flashcards/quiz_results remain.
+// cards attach to loci. Deck/flashcard/quiz-result types remain only for the
+// retained straight-quiz flow (/quiz/[deckId]); courses are gone.
 export type PalaceVisibility = "private" | "shared" | "public";
 
 export interface Palace {

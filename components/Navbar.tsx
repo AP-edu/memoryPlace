@@ -17,7 +17,7 @@ export default function Navbar() {
     `transition-colors ${active ? "font-semibold text-link" : "text-muted-foreground hover:text-foreground"}`;
 
   return (
-    <nav className="sticky top-0 z-40 border-b border-border bg-background/85 backdrop-blur transition-colors">
+    <nav className="sticky top-0 z-40 border-b border-border bg-background/85 backdrop-blur transition-colors print:hidden">
       <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4 sm:px-6">
         <div className="flex items-center gap-6">
           <Link href="/home" className="flex items-center gap-2 text-lg font-extrabold tracking-tight text-foreground">

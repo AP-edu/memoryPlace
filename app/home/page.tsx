@@ -23,6 +23,16 @@ function getToday(): Date {
   return cachedToday;
 }
 
+// Dismissal flag: server snapshot is "onboarded" (no tour card) so markup
+// matches; the real value applies right after hydration (same pattern as today).
+function getStoredOnboarded(): boolean {
+  try {
+    return window.localStorage.getItem("mp.onboarded") === "1";
+  } catch {
+    return true;
+  }
+}
+
 export default function HomePage() {
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -30,10 +40,24 @@ export default function HomePage() {
   const today = useSyncExternalStore(subscribeNoop, getToday, () => null);
   const [title, setTitle] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
+  // Guided tour (Phase G, lightweight): a getting-started checklist until the
+  // user completes their first loop or dismisses it. Persisted locally.
+  const storedOnboarded = useSyncExternalStore(subscribeNoop, getStoredOnboarded, () => true);
+  const [dismissedTour, setDismissedTour] = useState(false);
+  const onboarded = storedOnboarded || dismissedTour;
 
   useEffect(() => {
     if (status === "unauthenticated") router.replace("/login");
   }, [status, router]);
+
+  function dismissOnboarding() {
+    try {
+      window.localStorage.setItem("mp.onboarded", "1");
+    } catch {
+      // Private mode etc: hiding for this session is still fine.
+    }
+    setDismissedTour(true);
+  }
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -68,6 +92,13 @@ export default function HomePage() {
       ? `${summary.dueToday} item${summary.dueToday === 1 ? "" : "s"} due today`
       : "All caught up — nothing due";
   const cont = summary.continueTarget;
+  const reviewedTotal = summary.palaces.reduce((n, p) => n + p.reviewed, 0);
+  const steps = [
+    { done: summary.palaces.length > 0, label: "Raise your first palace", hint: "Use the form below." },
+    { done: summary.totalCards > 0, label: "Place loci and attach cards", hint: "Open a palace → Edit room." },
+    { done: reviewedTotal > 0, label: "Complete your first study loop", hint: "Continue below, or walk a room in 3D." },
+  ];
+  const showTour = !onboarded && steps.some((s) => !s.done);
 
   return (
     <div className="mx-auto max-w-5xl p-4 sm:p-6">
@@ -76,6 +107,40 @@ export default function HomePage() {
         {dueLine}
       </p>
       <h1 className="mb-6 mt-1 text-3xl font-semibold">Home</h1>
+
+      {showTour && (
+        <div className="card-base mb-8 border-primary/40 p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-highlight">Guided tour</p>
+              <p className="mt-1 text-xl font-semibold">Learn the palace loop</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Design → place loci → walk in 3D → reinforce with quizzes.
+              </p>
+            </div>
+            <button onClick={dismissOnboarding} className="btn-ghost shrink-0 !px-3 !py-1.5 !text-xs">
+              Dismiss
+            </button>
+          </div>
+          <ol className="mt-4 space-y-2">
+            {steps.map((s, i) => (
+              <li key={i} className="flex items-start gap-2 text-sm">
+                <span
+                  aria-hidden
+                  className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full text-xs font-bold ${
+                    s.done ? "bg-success text-success-foreground" : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {s.done ? "✓" : i + 1}
+                </span>
+                <span className={s.done ? "text-muted-foreground line-through" : ""}>
+                  {s.label} <span className="text-muted-foreground">— {s.hint}</span>
+                </span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
 
       {cont ? (
         <div className="card-base mb-8 p-5">

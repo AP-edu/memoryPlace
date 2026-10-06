@@ -106,6 +106,9 @@ export default function PalacePage() {
         <Link href={`/walk/palace/${id}?tour=1`} className="btn-outline">
           Walk palace
         </Link>
+        <Link href={`/palaces/${id}/print`} className="btn-ghost">
+          Export / Print
+        </Link>
       </div>
       {palaceErr && <p className="mt-2 text-sm text-destructive">{palaceErr}</p>}
 

@@ -92,8 +92,8 @@ export default function QuizPage() {
   return (
     <div className="mx-auto max-w-lg p-4 sm:p-6">
       {deckId && (
-        <Link href={`/decks/${deckId}`} className="btn-ghost">
-          {"\u2190 Back to deck"}
+        <Link href="/home" className="btn-ghost">
+          {"\u2190 Back to home"}
         </Link>
       )}
       <p className="mb-1 mt-3 text-center text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
