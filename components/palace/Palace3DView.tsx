@@ -6,6 +6,7 @@ import type { Opening, Room } from "@/types/database";
 import { palaceBounds, palaceCameraDistance, palaceLevelRooms } from "@/lib/palaceScene";
 import { toScene } from "@/lib/scene3d";
 import { RoomShell, SceneLights } from "../scene3d/RoomShell";
+import { SceneSky } from "../scene3d/SceneSky";
 import { useSceneColors } from "../scene3d/useSceneColors";
 import { SceneGate } from "../scene3d/SceneBoundary";
 
@@ -62,8 +63,9 @@ export default function Palace3DView({
           camera={{ position: camPos, fov: 50 }}
           onPointerMissed={() => onSelect?.(null)}
         >
-          <color attach="background" args={[colors.sky]} />
+          <color attach="background" args={[colors.horizon]} />
           <fog attach="fog" args={[colors.fog, d * 1.5, d * 4]} />
+          <SceneSky colors={colors} radius={400} />
           <SceneLights colors={colors} />
           {entries.map(({ room, openings: roomOpenings, offset }) => (
             <group

@@ -2,15 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { supabase } from "@/lib/supabase";
+import { parseAnswers } from "@/lib/sessionSummary";
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const roomId = req.nextUrl.searchParams.get("room");
+  const palaceId = req.nextUrl.searchParams.get("palace");
+  const deckId = req.nextUrl.searchParams.get("deck");
   let query = supabase.from("study_sessions").select("*").order("created_at", { ascending: false });
   query = query.eq("user_id", session.user.id);
   if (roomId) query = query.eq("room_id", roomId);
+  if (palaceId) query = query.eq("palace_id", palaceId);
+  if (deckId) query = query.eq("deck_id", deckId);
 
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -22,15 +27,21 @@ export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { room_id, palace_id, score, total } = await req.json();
+  const { room_id, palace_id, deck_id, score, total, answers } = await req.json();
   if (typeof score !== "number" || typeof total !== "number") {
     return NextResponse.json({ error: "Missing or invalid fields" }, { status: 400 });
   }
-  if ((room_id && palace_id) || (!room_id && !palace_id)) {
-    return NextResponse.json({ error: "Provide exactly one of room_id or palace_id" }, { status: 400 });
+  if ([room_id, palace_id, deck_id].filter(Boolean).length !== 1) {
+    return NextResponse.json({ error: "Provide exactly one of room_id, palace_id or deck_id" }, { status: 400 });
   }
 
-  if (room_id) {
+  if (deck_id) {
+    const { data: deck } = await supabase.from("decks").select("id, owner").eq("id", deck_id).maybeSingle();
+    if (!deck) return NextResponse.json({ error: "Deck not found" }, { status: 404 });
+    if (deck.owner !== session.user.id) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+  } else if (room_id) {
     const { data: room } = await supabase
       .from("rooms")
       .select("id, user_id, palace_id")
@@ -57,9 +68,11 @@ export async function POST(req: NextRequest) {
     .insert({
       room_id: room_id ?? null,
       palace_id: palace_id ?? null,
+      deck_id: deck_id ?? null,
       user_id: session.user.id,
-      scope: { room_id: room_id ?? null, palace_id: palace_id ?? null },
-      results: { score, total },
+      scope: { room_id: room_id ?? null, palace_id: palace_id ?? null, deck_id: deck_id ?? null },
+      // answers feed the post-session summary (per-room mastery, weak cards).
+      results: { score, total, answers: parseAnswers(answers) },
     })
     .select()
     .single();

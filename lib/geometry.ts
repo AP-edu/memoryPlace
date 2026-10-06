@@ -1,9 +1,10 @@
 import type { Locus, Room, WallFace } from "@/types/database";
 
 // v2 geometry (see migration 20260916131701_palace_v2_geometry.sql).
-// World y-up; top-down floorplan maps x -> right, z -> down.
+// World y-up. Room spans x∈[0,width], z∈[0,depth], y∈[0,height].
+// Top-down floorplan: x -> right, north (+z) drawn at the TOP (screen y = -z).
 // Walls: north (z=depth), south (z=0), east (x=width), west (x=0).
-// `wall_offset` runs 0..1 along the wall from its start corner.
+// `wall_offset` runs 0..1 along the wall (see wallSegment for each direction).
 
 export const WALLS: WallFace[] = ["west", "south", "east", "north"];
 export const WALL_START: Record<WallFace, { x: number; z: number }> = {

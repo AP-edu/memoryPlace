@@ -299,12 +299,21 @@ function CardStack({ count, yaw, colors }: { count: number; yaw: number; colors:
   );
 }
 
+// Day: warm sun over white marble. Night: dim, cool moonlight.
 export function SceneLights({ colors }: { colors: SceneColors }) {
-  return (
+  return colors.night ? (
     <>
-      <hemisphereLight args={[colors.sky, colors.floor, 0.9]} />
-      <ambientLight intensity={0.35} />
-      <directionalLight position={[8, 14, 6]} intensity={1.0} />
+      {/* Near-neutral cool light: strongly blue light crushes the red/green of the blue-grey stone. */}
+      <hemisphereLight args={["#dfe6ff", colors.floor, 1.4]} />
+      <ambientLight intensity={0.9} color="#e4eaff" />
+      <directionalLight position={[8, 14, 6]} intensity={1.0} color="#d6e0ff" />
+    </>
+  ) : (
+    <>
+      {/* Pale horizon tone (not the saturated zenith) so white marble stays white. */}
+      <hemisphereLight args={[colors.horizon, colors.floor, 1.1]} />
+      <ambientLight intensity={0.7} />
+      <directionalLight position={[8, 14, 6]} intensity={1.0} color="#fff4dc" />
     </>
   );
 }

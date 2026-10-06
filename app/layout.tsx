@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist_Mono, Plus_Jakarta_Sans } from "next/font/google";
+import { Cormorant_Garamond, Geist_Mono, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import SessionWrapper from "@/components/SessionWrapper";
 import Navbar from "@/components/Navbar";
@@ -9,6 +9,13 @@ import { THEME_INIT_SCRIPT } from "@/lib/theme";
 const jakarta = Plus_Jakarta_Sans({
   variable: "--font-jakarta",
   subsets: ["latin"],
+});
+
+// Classical serif for headings (ancient-Greece feel).
+const cormorant = Cormorant_Garamond({
+  variable: "--font-serif",
+  subsets: ["latin"],
+  weight: ["500", "600", "700"],
 });
 
 const geistMono = Geist_Mono({
@@ -25,7 +32,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html
       lang="en"
-      className={`${jakarta.variable} ${geistMono.variable}`}
+      className={`${jakarta.variable} ${cormorant.variable} ${geistMono.variable}`}
       // The pre-paint script sets class/data-theme on <html> before hydration.
       suppressHydrationWarning
     >

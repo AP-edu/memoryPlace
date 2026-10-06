@@ -5,7 +5,12 @@ import { useSyncExternalStore } from "react";
 // (see app/globals.css --scene-*), so the canvas follows light/dark theme.
 
 export interface SceneColors {
+  /** Dome zenith colour. */
   sky: string;
+  /** Dome horizon colour (also the fog + clear colour). */
+  horizon: string;
+  /** True under the dark (starry night) theme. */
+  night: boolean;
   fog: string;
   floor: string;
   wall: string;
@@ -17,8 +22,9 @@ export interface SceneColors {
   grid: string;
 }
 
-const VARS: Record<keyof SceneColors, string> = {
+const VARS: Record<Exclude<keyof SceneColors, "night">, string> = {
   sky: "--scene-sky",
+  horizon: "--scene-horizon",
   fog: "--scene-fog",
   floor: "--scene-floor",
   wall: "--scene-wall",
@@ -30,17 +36,20 @@ const VARS: Record<keyof SceneColors, string> = {
   grid: "--scene-grid",
 };
 
+// SSR / pre-hydration fallback = the dark (starry night) values in globals.css.
 export const DEFAULT_SCENE_COLORS: SceneColors = {
-  sky: "#0a0b14",
-  fog: "#0a0b14",
-  floor: "#262b57",
-  wall: "#4a52a3",
-  door: "#ffcd1f",
-  archway: "#3ccfcf",
-  locus: "#5a6bff",
-  locusActive: "#ffcd1f",
-  path: "#8f9bff",
-  grid: "#232858",
+  sky: "#02050f",
+  horizon: "#101b45",
+  night: true,
+  fog: "#101b45",
+  floor: "#1d2754",
+  wall: "#4a5896",
+  door: "#f2cf72",
+  archway: "#5fd0d6",
+  locus: "#6aa0ff",
+  locusActive: "#f2cf72",
+  path: "#8db4ff",
+  grid: "#1d2754",
 };
 
 let cacheKey = "";
@@ -49,8 +58,8 @@ let cache: SceneColors = DEFAULT_SCENE_COLORS;
 function read(): SceneColors {
   if (typeof window === "undefined") return DEFAULT_SCENE_COLORS;
   const style = getComputedStyle(document.documentElement);
-  const next = { ...DEFAULT_SCENE_COLORS };
-  for (const k of Object.keys(VARS) as Array<keyof SceneColors>) {
+  const next: SceneColors = { ...DEFAULT_SCENE_COLORS, night: document.documentElement.classList.contains("dark") };
+  for (const k of Object.keys(VARS) as Array<keyof typeof VARS>) {
     const v = style.getPropertyValue(VARS[k]).trim();
     if (v) next[k] = v;
   }

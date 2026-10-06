@@ -33,9 +33,13 @@ Order of delivery from the vision docs; each phase ends green on tsc + eslint +
 - F. 3D walk mode (first-person, doors/archways, loom-at-locus to reveal card).
   Shipped early as `/walk/[roomId]` (lib/walk.ts pure logic + R3F scene).
   DONE.
-- G. Drop legacy courses/decks/flashcards tags + OAuth (Google real, Apple stub)
-  + export/printable blueprint + onboarding (guided tour folded in here).
-  (The /quiz deck route is retained for the courses straight-quiz flow.)
+- G. Drop legacy courses UI + OAuth (Google real, Apple stub) + export/printable
+  blueprint + onboarding. DONE.
+- H. Unified study system: standalone decks (palace link + tags), live-linked
+  card<->flashcard porting both ways (`/api/imports`, `/api/exports`,
+  `/api/links`), deck quiz on the shared SRS engine, full session summary,
+  server-side guided onboarding, Greek theme (blue sky + marble / starry
+  night). Code DONE + build green; PC live-click verdict pending.
 
 ## Geometry convention (Phase A, source of truth for B/F)
 
@@ -48,6 +52,11 @@ Levels (grid editor): a room sits on `level_id` with its min corner at
 legacy `width` is a fraction of the wall — always read via
 `openingWidthM()` in `lib/geometry.ts`. Linked doors between adjacent rooms
 are a pair of openings pointing at each other via `target_room_id`.
+Deck world: `flashcards` (question/answer) live-link 1:1 to palace `cards` via
+`cards.source_flashcard_id` <-> `flashcards.source_card_id` (always set/cleared
+as a pair through `lib/links.ts`; FKs are ON DELETE SET NULL, never cascade).
+A linked flashcard shares its card's single `card_reviews` row (SRS is per
+card); unlinked flashcards are always-due with no SRS row (anchor nudge).
 Loci anchor on `wall` + `wall_offset` (0..1 relative, resizes don't orphan) +
 `height` (absolute units, default 1.5). `loci.position` is the single canonical
 traversal-order authority.

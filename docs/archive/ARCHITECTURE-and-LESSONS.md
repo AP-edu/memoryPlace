@@ -1,3 +1,5 @@
+> **STALE — archived.** Written for the pre-palace courses/decks world (deleted in Phase G). Kept for history only; do not build from it. Current docs: `AGENTS.md`, `README.md`, `docs/product/`.
+
 # Architecture & Lessons Learned — the Quiz Bug Hunt (2026-08-12)
 
 This document tells the full story: how MemoryPlace is structured, how its

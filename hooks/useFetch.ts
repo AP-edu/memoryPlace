@@ -24,7 +24,18 @@ export function useFetch<T>(url: string | null): UseFetchResult<T> {
     (async () => {
       try {
         const res = await fetch(url);
-        if (!res.ok) throw new Error("Request failed");
+        if (!res.ok) {
+          // Surface the server's message (and tell expired sessions apart)
+          // instead of a bare "Request failed".
+          let msg = res.status === 401 ? "Your session expired. Please log in again." : "Request failed";
+          try {
+            const body = await res.json();
+            if (body && typeof body.error === "string" && res.status !== 401) msg = body.error;
+          } catch {
+            // non-JSON error body: keep the generic message
+          }
+          throw new Error(msg);
+        }
         const json = await res.json();
         if (!cancelled) {
           setData(json);

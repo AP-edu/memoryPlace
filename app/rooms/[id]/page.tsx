@@ -6,6 +6,8 @@ import { useParams, useRouter } from "next/navigation";
 import { useFetch } from "@/hooks/useFetch";
 import type { Card, Locus, Opening, Room, WallFace } from "@/types/database";
 import { httpLociActions } from "@/components/scene3d/actions";
+import ImportFromDeck from "@/components/decks/ImportFromDeck";
+import SendToDeck from "@/components/decks/SendToDeck";
 
 // three.js is client-only and heavy: load the 3D editor on demand.
 // If WebGL is unavailable (e.g. hardware acceleration off) the editor shows
@@ -30,6 +32,7 @@ export default function RoomPage() {
   );
 
   const [formError, setFormError] = useState<string | null>(null);
+  const [deckPanel, setDeckPanel] = useState<"import" | "send" | null>(null);
 
   const lociActions = useMemo(
     () => httpLociActions((what) => (what === "loci" ? refetchLoci() : refetchCards())),
@@ -143,11 +146,44 @@ export default function RoomPage() {
           <Link href={`/walk/${room.id}?tour=1`} className="btn-primary !px-3 !py-1.5">
             Tour loci
           </Link>
+          <button onClick={() => setDeckPanel(deckPanel === "import" ? null : "import")} className="btn-outline !px-3 !py-1.5">
+            Import deck
+          </button>
+          {(cards?.length ?? 0) > 0 && (
+            <button onClick={() => setDeckPanel(deckPanel === "send" ? null : "send")} className="btn-outline !px-3 !py-1.5">
+              Export to deck
+            </button>
+          )}
           <button onClick={deleteRoom} className="btn-danger">
             Delete room
           </button>
         </div>
       </div>
+      {deckPanel === "import" && (
+        <div className="mt-3">
+          <ImportFromDeck
+            roomId={room.id}
+            onDone={() => {
+              refetchLoci();
+              refetchCards();
+            }}
+            onClose={() => setDeckPanel(null)}
+          />
+        </div>
+      )}
+      {deckPanel === "send" && (
+        <div className="mt-3">
+          <SendToDeck
+            source={{ room_id: room.id }}
+            defaultTitle={room.title}
+            label="Send every card in this room to a deck (spatial order)"
+            onClose={() => {
+              setDeckPanel(null);
+              refetchCards();
+            }}
+          />
+        </div>
+      )}
 
       <div className="mt-3 mb-4 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-3xl font-semibold">Room Editor</h1>
@@ -182,7 +218,17 @@ export default function RoomPage() {
       {formError && <p className="mb-4 text-sm text-destructive">{formError}</p>}
 
       <div className="mb-4">
-        <Room3DEditor room={room} loci={loci ?? []} openings={openings ?? []} cards={cards ?? []} actions={lociActions} />
+        <Room3DEditor
+          room={room}
+          loci={loci ?? []}
+          openings={openings ?? []}
+          cards={cards ?? []}
+          actions={lociActions}
+          onDeckChanged={() => {
+            refetchLoci();
+            refetchCards();
+          }}
+        />
       </div>
 
       <div className="card-base p-4">

@@ -4,6 +4,7 @@ import { OrbitControls } from "@react-three/drei";
 import type { Locus, Opening, Room } from "@/types/database";
 import { toScene } from "@/lib/scene3d";
 import { LocusMarkers, RoomShell, SceneLights } from "./RoomShell";
+import { SceneSky } from "./SceneSky";
 import { useSceneColors } from "./useSceneColors";
 import { SceneGate } from "./SceneBoundary";
 
@@ -34,8 +35,9 @@ export default function Room3DViewer({
         camera={{ position: toScene({ x: room.width / 2 + d * 0.35, y: d * 0.75, z: room.depth / 2 - d * 0.8 }), fov: 50 }}
         onPointerMissed={() => onSelect?.(null)}
       >
-        <color attach="background" args={[colors.sky]} />
+        <color attach="background" args={[colors.horizon]} />
         <fog attach="fog" args={[colors.fog, d * 1.5, d * 4]} />
+          <SceneSky colors={colors} radius={400} />
         <SceneLights colors={colors} />
         <RoomShell room={room} openings={openings} colors={colors} cutaway />
         <LocusMarkers

@@ -1,3 +1,5 @@
+> **STALE — archived.** Written for the pre-palace courses/decks world (deleted in Phase G). Kept for history only; do not build from it. Current docs: `AGENTS.md`, `README.md`, `docs/product/`.
+
 # Quiz Testing & Troubleshooting
 
 Status: **2026-08-12 — RESOLVED & VERIFIED LIVE on both the user and admin

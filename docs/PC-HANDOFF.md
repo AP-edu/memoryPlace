@@ -1,4 +1,4 @@
-# PC Handoff — feat/laptop-pass (Oct 2026)
+# PC Handoff (Oct 2026) — see also SONNET-NOTES.md for the Phase H build log
 
 Laptop pass is done and pushed. This doc is the plan waiting on the PC:
 verify, launch on Vercel, then premium polish.
@@ -46,12 +46,13 @@ All green on the laptop: `npx tsc --noEmit` + `npm run lint` + `npm run test`
    - Onboarding: fresh user sees checklist, steps tick off, Dismiss persists.
    - Login page: Google button errors cleanly until env is set (expected);
      credentials login → `/home`.
-4. **Supabase hosted project** — apply all 10 migrations in
-   `supabase/migrations/` (newest: `users_base_hardening`).
+4. **Supabase hosted project** — apply all 11 migrations in
+   `supabase/migrations/` (newest: `deck_sessions_onboarding_step`).
    Verify tables: `card_reviews`, `cards.options`, `cards.position`,
    `decks.palace_id`/`decks.tags`, `cards.source_flashcard_id`,
    `flashcards.source_card_id`, `users.onboarded_at`,
-   `users` email uniqueness (`users_email_lower_uniq`) + role check.
+   `users` email uniqueness (`users_email_lower_uniq`) + role check,
+   `study_sessions.deck_id`, `users.onboarding_step`.
 5. **Vercel** — import repo, set env, deploy:
    - `SUPABASE_URL` + `SUPABASE_SECRET_KEY` (service-role bypass is the app model)
    - `NEXTAUTH_SECRET`, `NEXTAUTH_URL=https://<your>.vercel.app`

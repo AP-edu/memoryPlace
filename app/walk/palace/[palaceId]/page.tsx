@@ -7,6 +7,7 @@ import { useSearchParam } from "@/hooks/useSearchParam";
 import type { Card, Locus, Opening, Room } from "@/types/database";
 import { sortPlayQueue, type QueueItem } from "@/lib/srs";
 import WalkView from "@/components/scene3d/WalkView";
+import type { SessionAnswer } from "@/lib/reviewTypes";
 
 // Palace-scope walk-and-answer tour (Phase D): one room at a time in
 // canonical traversal order (creation order), due-first queue per room.
@@ -72,6 +73,35 @@ export default function PalaceWalkPage() {
     }
   }, []);
 
+  // Each room's tour is saved as its own session (scope = that room) so the
+  // summary can show mastery + weak cards for exactly what was just walked.
+  const onTourComplete = useCallback(
+    async (answers: SessionAnswer[], got: number, total: number) => {
+      const roomId = answers[0]?.roomId;
+      if (!roomId) return null;
+      try {
+        const res = await fetch("/api/study-sessions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ room_id: roomId, score: got, total, answers }),
+        });
+        if (!res.ok) return null;
+        const saved = await res.json();
+        const q = new URLSearchParams({
+          session: saved.id,
+          score: String(got),
+          total: String(total),
+          back: `/walk/palace/${palaceId}?room=${roomId}`,
+          backLabel: "Back to the palace walk",
+        });
+        return `/results?${q.toString()}`;
+      } catch {
+        return null;
+      }
+    },
+    [palaceId]
+  );
+
   if (!palaceId) return <p className="p-6">Missing palace id.</p>;
   if (loadingRooms || !orderedRooms) return <p className="p-6 text-muted-foreground">Entering the palace...</p>;
   if (roomsError) return <p className="p-6 text-destructive">Could not load palace rooms ({roomsError}).</p>;
@@ -118,6 +148,7 @@ export default function PalaceWalkPage() {
         spawn={null}
         onExitDoor={onExitDoor}
         onGrade={onGrade}
+        onTourComplete={onTourComplete}
         autoTour={tourParam}
         cardOrder={cardOrder}
         className="h-[calc(100dvh-3.5rem)]"

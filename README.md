@@ -40,15 +40,16 @@ The first registered user automatically becomes an admin (can access `/admin` an
 - `/rooms/[id]` — room editor (loci, cards, openings)
 - `/walk/[roomId]`, `/walk/palace/[palaceId]` — first-person walk + guided tour
 - `/study/palace/[palaceId]`, `/study/[roomId]` — due-first / walkthrough sessions
-- `/quiz/[deckId]` — retained straight-quiz flow
-- `/results` — latest quiz score
+- `/decks`, `/decks/[id]` — standalone decks (tags, optional palace link), flashcard CRUD, port to a palace
+- `/quiz/[deckId]` — deck quiz (same engine as palace study; linked cards share SRS)
+- `/results` — session summary: score, mastery per room, weak cards (edit / snooze / move)
 - `/profile` — stats + continue/weakest links
 - `/forgot-password`, `/reset-password/[token]` — password reset
 - `/admin` — all palaces (admin only)
 
 ## API
 
-REST endpoints under `/api/palaces`, `/api/rooms`, `/api/levels`, `/api/openings`, `/api/loci`, `/api/cards`, `/api/reviews`, `/api/study-sessions`, `/api/home/summary`, `/api/auth/*` (plus `/api/decks`, `/api/flashcards`, `/api/quiz-results` for the retained straight-quiz flow). All require a session except signup. Ownership rules: regular users see/manage only their own rows; admins see/manage all.
+REST endpoints under `/api/palaces`, `/api/rooms`, `/api/levels`, `/api/openings`, `/api/loci`, `/api/cards`, `/api/reviews`, `/api/study-sessions`, `/api/home/summary`, `/api/profile`, `/api/auth/*`, and the deck world: `/api/decks`, `/api/flashcards`, `/api/links` (card↔flashcard live link: link / push / unlink), `/api/imports` (deck → room), `/api/exports` (room/locus → deck). `/api/quiz-results` is legacy and unused. All require a session except signup. Ownership rules: regular users see/manage only their own rows; admins see/manage all.
 
 ## Scripts
 

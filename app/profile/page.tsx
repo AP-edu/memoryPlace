@@ -1,12 +1,30 @@
 "use client";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useFetch } from "@/hooks/useFetch";
 import type { HomeSummary } from "@/lib/homeSummary";
 
 export default function ProfilePage() {
   const { data: session, status } = useSession();
-  const { data: summary } = useFetch<HomeSummary>("/api/home/summary");
+  const router = useRouter();
+  const { data: summary } = useFetch<HomeSummary>(`/api/home/summary?tz=${new Date().getTimezoneOffset()}`);
+
+  async function replayTour() {
+    const res = await fetch("/api/profile", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ onboarded: false }),
+    });
+    if (res.ok) {
+      try {
+        window.localStorage.removeItem("mp.onboarded");
+      } catch {
+        // ignore
+      }
+      router.push("/home");
+    }
+  }
 
   if (status === "loading") return <p className="p-6 text-muted-foreground">Loading...</p>;
   if (!session) return <p className="p-6 text-muted-foreground">Redirecting to login...</p>;
@@ -78,6 +96,18 @@ export default function ProfilePage() {
           </Link>
         </div>
       )}
+
+      <div className="card-base mt-6 flex items-center justify-between p-4">
+        <div>
+          <p className="font-display text-lg font-medium">Guided tour</p>
+          <p className="text-sm text-muted-foreground">
+            {summary?.onboarding?.onboardedAt ? "Completed. Replay it any time." : "In progress on your home page."}
+          </p>
+        </div>
+        <button onClick={replayTour} className="btn-outline">
+          Replay tour
+        </button>
+      </div>
 
       {weakest && weakest.due > 0 && (!cont || weakest.palaceId !== cont.palaceId) && (
         <div className="card-base mt-6 flex items-center justify-between p-4">

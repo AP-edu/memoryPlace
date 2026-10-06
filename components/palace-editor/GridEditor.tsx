@@ -65,12 +65,12 @@ const HANDLES: Handle[] = ["n", "s", "e", "w", "ne", "nw", "se", "sw"];
 // keep their contrast in both light and dark themes.
 export const ROOM_COLORS: Array<{ value: string | null; name: string }> = [
   { value: null, name: "Default" },
-  { value: "#4255ff", name: "Indigo" },
-  { value: "#3ccfcf", name: "Cyan" },
-  { value: "#ffcd1f", name: "Yellow" },
-  { value: "#ff6b81", name: "Coral" },
-  { value: "#a78bfa", name: "Violet" },
-  { value: "#3ddc97", name: "Mint" },
+  { value: "#1d5fc4", name: "Aegean" },
+  { value: "#1b8fa6", name: "Sea" },
+  { value: "#d9a82e", name: "Gold" },
+  { value: "#c8643c", name: "Terracotta" },
+  { value: "#7b5ea7", name: "Amethyst" },
+  { value: "#7a8f3a", name: "Olive" },
 ];
 // Keep it simple: 1 m by default, 0.5 m for finer work.
 const SNAP_CHOICES = [1, 0.5];

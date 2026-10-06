@@ -9,7 +9,10 @@ import { anchorFromPoint, reorderPositions, toScene, tourOrder, type WallAnchor 
 import { LocusMarkers, RoomShell, SceneLights, type WallPointerEvent } from "./RoomShell";
 import { SceneGate } from "./SceneBoundary";
 import { useSceneColors } from "./useSceneColors";
+import { SceneSky } from "./SceneSky";
 import type { LociActions } from "./actions";
+import ImportFromDeck from "@/components/decks/ImportFromDeck";
+import SendToDeck from "@/components/decks/SendToDeck";
 
 const WALL_NAMES: Record<WallFace, string> = { north: "North", south: "South", east: "East", west: "West" };
 
@@ -39,6 +42,7 @@ export default function Room3DEditor({
   openings,
   cards,
   actions,
+  onDeckChanged,
   className = "",
   height = 520,
 }: {
@@ -47,6 +51,8 @@ export default function Room3DEditor({
   openings: Opening[];
   cards: Card[];
   actions: LociActions;
+  /** Called after a deck import / link change so the page can refetch cards. */
+  onDeckChanged?: () => void;
   className?: string;
   height?: number;
 }) {
@@ -251,8 +257,9 @@ export default function Room3DEditor({
           onPointerLeave={() => setHover(null)}
           style={{ cursor: dragging ? "grabbing" : tool === "place" ? "crosshair" : "default", touchAction: "none" }}
         >
-          <color attach="background" args={[colors.sky]} />
+          <color attach="background" args={[colors.horizon]} />
           <fog attach="fog" args={[colors.fog, camDist * 1.5, camDist * 4]} />
+          <SceneSky colors={colors} radius={400} />
           <SceneLights colors={colors} />
           <RoomShell room={room} openings={openings} colors={colors} cutaway onWallClick={onWallClick} onWallMove={onWallMove} />
           <LocusMarkers
@@ -372,6 +379,7 @@ export default function Room3DEditor({
             onUpdateCard={(id, front, back, options) => run(() => actions.updateCard(id, { front, back, options }))}
             onMoveCard={(id, dir) => moveCard(selected.id, id, dir)}
             onDeleteCard={(id) => run(() => actions.deleteCard(id))}
+            onDeckChanged={onDeckChanged}
           />
         )}
       </aside>
@@ -391,6 +399,7 @@ function LocusDetails({
   onUpdateCard,
   onMoveCard,
   onDeleteCard,
+  onDeckChanged,
 }: {
   room: Room;
   locus: Locus;
@@ -403,7 +412,10 @@ function LocusDetails({
   onUpdateCard: (id: string, front: string, back: string, options?: string[]) => Promise<void>;
   onMoveCard: (id: string, dir: -1 | 1) => void;
   onDeleteCard: (id: string) => Promise<void>;
+  onDeckChanged?: () => void;
 }) {
+  const [deckPanel, setDeckPanel] = useState<"import" | "send" | null>(null);
+  const [linkMsg, setLinkMsg] = useState<string | null>(null);
   const [label, setLabel] = useState(locus.label);
   const [front, setFront] = useState("");
   const [back, setBack] = useState("");
@@ -411,6 +423,21 @@ function LocusDetails({
   const [editing, setEditing] = useState<{ id: string; front: string; back: string; options: string } | null>(null);
   const wall = locus.wall ?? "north";
   const len = wallLength(wall, room);
+
+  async function unlinkCard(cardId: string) {
+    const res = await fetch(`/api/links?card_id=${cardId}`, { method: "DELETE" });
+    setLinkMsg(res.ok ? "Unlinked." : "Unlink failed.");
+    if (res.ok) onDeckChanged?.();
+  }
+  async function pushCard(card: Card) {
+    if (!card.source_flashcard_id) return;
+    const res = await fetch("/api/links", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ flashcard_id: card.source_flashcard_id, card_id: card.id, direction: "to-flashcard" }),
+    });
+    setLinkMsg(res.ok ? "Pushed to the deck card." : ((await res.json().catch(() => ({}))).error ?? "Push failed."));
+  }
 
   return (
     <section className="space-y-3 border-t border-border pt-3">
@@ -493,6 +520,17 @@ function LocusDetails({
                   Delete
                 </button>
               </div>
+              {c.source_flashcard_id && (
+                <div className="mt-1 flex flex-wrap items-center gap-3 text-xs">
+                  <span className="rounded-full border border-success/50 px-2 py-0.5 text-success">↔ Linked to deck</span>
+                  <button type="button" className="hover:underline" onClick={() => pushCard(c)}>
+                    Push to deck
+                  </button>
+                  <button type="button" className="hover:underline" onClick={() => unlinkCard(c.id)}>
+                    Unlink
+                  </button>
+                </div>
+              )}
             </div>
           )
         )}
@@ -515,6 +553,33 @@ function LocusDetails({
             Add card
           </button>
         </form>
+      </div>
+      <div className="space-y-2">
+        <div className="flex gap-2 text-xs">
+          <button type="button" className="btn-outline !px-2 !py-1" onClick={() => setDeckPanel(deckPanel === "import" ? null : "import")}>
+            Import from deck
+          </button>
+          {cards.length > 0 && (
+            <button type="button" className="btn-outline !px-2 !py-1" onClick={() => setDeckPanel(deckPanel === "send" ? null : "send")}>
+              Send to deck
+            </button>
+          )}
+        </div>
+        {linkMsg && <p className="text-xs text-muted-foreground">{linkMsg}</p>}
+        {deckPanel === "import" && (
+          <ImportFromDeck roomId={room.id} locusId={locus.id} onDone={() => onDeckChanged?.()} onClose={() => setDeckPanel(null)} />
+        )}
+        {deckPanel === "send" && (
+          <SendToDeck
+            source={{ locus_id: locus.id }}
+            defaultTitle={locus.label || room.title}
+            label="Send this locus's cards to a deck"
+            onClose={() => {
+              setDeckPanel(null);
+              onDeckChanged?.();
+            }}
+          />
+        )}
       </div>
       <button type="button" className="btn-danger w-full py-1.5 text-sm" disabled={busy} onClick={onDelete}>
         Delete locus

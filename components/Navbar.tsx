@@ -28,6 +28,9 @@ export default function Navbar() {
             <Link href="/home" className={linkClass(pathname === "/home" || pathname.startsWith("/home") || pathname.startsWith("/palaces") || pathname.startsWith("/rooms") || pathname.startsWith("/study") || pathname.startsWith("/walk"))}>
               Home
             </Link>
+            <Link href="/decks" className={linkClass(pathname.startsWith("/decks") || pathname.startsWith("/quiz"))}>
+              Decks
+            </Link>
             <Link href="/profile" className={linkClass(pathname.startsWith("/profile"))}>
               Profile
             </Link>
@@ -46,6 +49,7 @@ export default function Navbar() {
           </button>
         </div>
       </div>
+      <div aria-hidden className="meander-rule" />
     </nav>
   );
 }
