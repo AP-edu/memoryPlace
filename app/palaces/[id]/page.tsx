@@ -90,8 +90,8 @@ export default function PalacePage() {
 
   return (
     <div className="mx-auto max-w-7xl p-4 sm:p-6">
-      <Link href="/palaces" className="btn-ghost">
-        {"\u2190 Back to palaces"}
+      <Link href="/home" className="btn-ghost">
+        {"\u2190 Back to home"}
       </Link>
 
       <div className="mt-3 flex flex-wrap gap-2">
@@ -102,6 +102,12 @@ export default function PalacePage() {
         </button>
         <Link href={`/study/palace/${id}`} className="btn-outline">
           Study due
+        </Link>
+        <Link href={`/walk/palace/${id}?tour=1`} className="btn-outline">
+          Walk palace
+        </Link>
+        <Link href={`/palaces/${id}/print`} className="btn-ghost">
+          Export / Print
         </Link>
       </div>
       {palaceErr && <p className="mt-2 text-sm text-destructive">{palaceErr}</p>}

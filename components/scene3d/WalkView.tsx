@@ -25,6 +25,7 @@ import {
   navArrows,
   navStep,
   navStops,
+  orderTourStopsByCards,
   stopPose,
   type NavArrow,
   type NavStop,
@@ -319,6 +320,12 @@ export interface WalkViewProps {
   actions?: React.ReactNode;
   /** Start the guided tour immediately. */
   autoTour?: boolean;
+  /**
+   * Due-first card order (card ids, e.g. from
+   * `sortPlayQueue(items, "due", now)`). When provided the tour offers a
+   * Due first / Walkthrough toggle; Walkthrough keeps canonical order.
+   */
+  cardOrder?: string[] | null;
   className?: string;
 }
 
@@ -333,6 +340,7 @@ export default function WalkView({
   onGrade,
   actions,
   autoTour = false,
+  cardOrder = null,
   className = "h-dvh",
 }: WalkViewProps) {
   const colors = useSceneColors();
@@ -353,7 +361,22 @@ export default function WalkView({
   // Parents remount this component per room (key={room.id}) so the spawn pose applies.
 
   const items = useMemo(() => toWorldLoci(loci, room), [loci, room]);
-  const stops = useMemo<Stop[]>(() => buildTourStops(loci, cards), [loci, cards]);
+  // Tour queue: canonical traversal order, or due-first when the caller
+  // passes a card order and the player picks it. Same semantics as the 2D
+  // study session (lib/srs.ts sortPlayQueue), so both agree.
+  const [tourMode, setTourMode] = useState<"due" | "walk">("due");
+  const stops = useMemo<Stop[]>(() => {
+    const base = buildTourStops(loci, cards);
+    if (tourMode === "due" && cardOrder && cardOrder.length > 0) return orderTourStopsByCards(base, cardOrder);
+    return base;
+  }, [loci, cards, tourMode, cardOrder]);
+
+  function switchTourMode(next: "due" | "walk") {
+    if (next === tourMode) return;
+    setTourMode(next);
+    setTour(null);
+    setSummary(null);
+  }
 
   // ---------------------------------------------------------------- street-view navigation
   // Stops = loci in study order, then linked doors. Floor chevrons point at the
@@ -659,6 +682,26 @@ export default function WalkView({
           </p>
         </div>
         <div className="pointer-events-auto flex flex-wrap gap-2">
+          {!tour && cardOrder && cardOrder.length > 0 && (
+            <div className="flex overflow-hidden rounded-xl border border-border bg-card" role="group" aria-label="Tour order">
+              <button
+                type="button"
+                onClick={() => switchTourMode("due")}
+                aria-pressed={tourMode === "due"}
+                className={`px-3 py-2 text-sm font-medium ${tourMode === "due" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                Due first
+              </button>
+              <button
+                type="button"
+                onClick={() => switchTourMode("walk")}
+                aria-pressed={tourMode === "walk"}
+                className={`px-3 py-2 text-sm font-medium ${tourMode === "walk" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                Walkthrough
+              </button>
+            </div>
+          )}
           {!tour && stops.length > 0 && (
             <button type="button" onClick={startTour} className="btn-primary">
               {"\u25B6"} Start tour

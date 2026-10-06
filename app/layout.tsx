@@ -18,7 +18,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "MemoryPlace",
-  description: "A memory palace study app for courses, decks, and flashcards.",
+  description: "Design memory palaces in 2D, walk them in 3D, and reinforce recall with spatial quizzes.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

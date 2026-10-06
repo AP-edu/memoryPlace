@@ -17,8 +17,8 @@ export default function ResultsContent() {
         {score} <span className="text-3xl text-muted-foreground">/ {total}</span>
       </p>
       <p className="mt-6">
-        <Link href="/dashboard" className="btn-outline">
-          Back to Dashboard
+        <Link href="/home" className="btn-outline">
+          Back to Home
         </Link>
       </p>
     </div>

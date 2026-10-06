@@ -1,12 +1,12 @@
 # memoryPlace
 
-A memory-palace study app: users create courses, organize decks of flashcards inside them, study decks via quizzes, and track results.
+A memory-palace study app: design palaces in 2D, walk them in 3D, place loci on walls, attach cards, and reinforce recall with spatial quizzes.
 
 ## Stack
 
 - **Framework**: Next.js 16 (App Router) + React 19 + TypeScript
 - **Backend**: Supabase (Postgres) — all data flows through `/api/*` route handlers
-- **Auth**: NextAuth v4 (credentials, JWT strategy) with bcrypt password hashing
+- **Auth**: NextAuth v4 (credentials + Google, Apple stub, JWT strategy) with bcrypt password hashing
 - **Styling**: Tailwind CSS v4
 
 ## Getting started
@@ -19,6 +19,11 @@ A memory-palace study app: users create courses, organize decks of flashcards in
    SUPABASE_SECRET_KEY=
    NEXTAUTH_SECRET=
    NEXTAUTH_URL=http://localhost:3000
+   # OAuth (prod): register redirect https://<your>.vercel.app/api/auth/callback/<google|apple>
+   GOOGLE_CLIENT_ID=
+   GOOGLE_CLIENT_SECRET=
+   # APPLE_ID=
+   # APPLE_SECRET=
    ```
 
 3. `npm run dev` and open http://localhost:3000
@@ -28,16 +33,18 @@ The first registered user automatically becomes an admin (can access `/admin` an
 ## Routes
 
 - `/login`, `/signup` — authentication
-- `/dashboard` — your courses (protected)
-- `/courses/[id]` — decks inside a course
-- `/decks/[id]` — flashcard management
-- `/quiz/[deckid]` — study a deck
+- `/home` — Palace Overview + due summary (protected)
+- `/palaces/[id]` — 2D blueprint / 3D palace, rooms, study + walk links
+- `/rooms/[id]` — room editor (loci, cards, openings)
+- `/walk/[roomId]`, `/walk/palace/[palaceId]` — first-person walk + guided tour
+- `/study/palace/[palaceId]`, `/study/[roomId]` — due-first / walkthrough sessions
+- `/quiz/[deckId]` — retained straight-quiz flow
 - `/results` — latest quiz score
-- `/admin` — all courses (admin only)
+- `/admin` — all palaces (admin only)
 
 ## API
 
-REST endpoints under `/api/courses`, `/api/decks`, `/api/flashcards`, `/api/quiz-results`, `/api/auth/*`. All require a session except signup. Ownership rules: regular users see/manage only their own rows; admins see/manage all.
+REST endpoints under `/api/palaces`, `/api/rooms`, `/api/loci`, `/api/cards`, `/api/reviews`, `/api/study-sessions`, `/api/auth/*` (plus `/api/decks`, `/api/flashcards`, `/api/quiz-results` for the retained straight-quiz flow). All require a session except signup. Ownership rules: regular users see/manage only their own rows; admins see/manage all.
 
 ## Scripts
 

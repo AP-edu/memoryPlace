@@ -19,7 +19,7 @@ export default function LoginPage() {
       redirect: false,
     });
 
-    if (result?.ok) router.push("/dashboard");
+    if (result?.ok) router.push("/home");
     else setError("Invalid email or password");
   }
 
@@ -46,6 +46,19 @@ export default function LoginPage() {
           />
           <button className="btn-primary w-full">Log In</button>
         </form>
+        <div className="my-4 flex items-center gap-3 text-xs text-muted-foreground">
+          <span className="h-px flex-1 bg-border" aria-hidden />
+          or
+          <span className="h-px flex-1 bg-border" aria-hidden />
+        </div>
+        <div className="space-y-2">
+          <button onClick={() => signIn("google", { callbackUrl: "/home" })} className="btn-outline w-full">
+            Continue with Google
+          </button>
+          <button disabled title="Apple sign-in arrives with the production domain" className="btn-outline w-full opacity-50">
+            Continue with Apple (soon)
+          </button>
+        </div>
         <p className="mt-3 text-center text-sm">
           <Link href="/forgot-password" className="text-muted-foreground hover:text-foreground hover:underline">
             Forgot password?

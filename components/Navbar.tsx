@@ -17,7 +17,7 @@ export default function Navbar() {
     `transition-colors ${active ? "font-semibold text-link" : "text-muted-foreground hover:text-foreground"}`;
 
   return (
-    <nav className="sticky top-0 z-40 border-b border-border bg-background/85 backdrop-blur transition-colors">
+    <nav className="sticky top-0 z-40 border-b border-border bg-background/85 backdrop-blur transition-colors print:hidden">
       <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4 sm:px-6">
         <div className="flex items-center gap-6">
           <Link href="/home" className="flex items-center gap-2 text-lg font-extrabold tracking-tight text-foreground">
@@ -25,17 +25,8 @@ export default function Navbar() {
             MemoryPlace
           </Link>
           <div className="flex gap-4 text-sm">
-            <Link href="/home" className={linkClass(pathname === "/home" || pathname.startsWith("/home"))}>
+            <Link href="/home" className={linkClass(pathname === "/home" || pathname.startsWith("/home") || pathname.startsWith("/palaces") || pathname.startsWith("/rooms") || pathname.startsWith("/study") || pathname.startsWith("/walk"))}>
               Home
-            </Link>
-            <Link href="/dashboard" className={linkClass(pathname.startsWith("/dashboard"))}>
-              My Courses
-            </Link>
-            <Link
-              href="/palaces"
-              className={linkClass(pathname.startsWith("/palaces") || pathname.startsWith("/rooms") || pathname.startsWith("/study"))}
-            >
-              My Palaces
             </Link>
             <Link href="/profile" className={linkClass(pathname.startsWith("/profile"))}>
               Profile

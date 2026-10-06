@@ -31,7 +31,7 @@ export default function SignupPage() {
       redirect: false,
     });
 
-    if (result?.ok) router.push("/dashboard");
+    if (result?.ok) router.push("/home");
     else setError("Account created, but login failed. Try logging in manually.");
   }
 
@@ -64,6 +64,19 @@ export default function SignupPage() {
           />
           <button className="btn-primary w-full">Create Account</button>
         </form>
+        <div className="my-4 flex items-center gap-3 text-xs text-muted-foreground">
+          <span className="h-px flex-1 bg-border" aria-hidden />
+          or
+          <span className="h-px flex-1 bg-border" aria-hidden />
+        </div>
+        <div className="space-y-2">
+          <button onClick={() => signIn("google", { callbackUrl: "/home" })} className="btn-outline w-full">
+            Continue with Google
+          </button>
+          <button disabled title="Apple sign-in arrives with the production domain" className="btn-outline w-full opacity-50">
+            Continue with Apple (soon)
+          </button>
+        </div>
       </div>
       <p className="mt-5 text-center text-sm text-muted-foreground">
         Already have an account?{" "}

@@ -21,7 +21,7 @@ export default function Home() {
       </p>
       <h1 className="text-5xl font-semibold leading-tight sm:text-6xl">MemoryPlace</h1>
       <p className="mx-auto mb-10 mt-5 max-w-md text-muted-foreground">
-        Organize your study material into courses, decks, and flashcards — then quiz yourself in the palace.
+        Design rooms in 2D, place loci on the walls, walk the palace in 3D, and reinforce recall with spatial quizzes.
       </p>
       <div className="flex justify-center gap-4">
         <Link href="/login" className="btn-primary">
