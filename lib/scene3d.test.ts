@@ -3,6 +3,8 @@ import * as THREE from "three";
 import type { Locus, Opening, Room } from "@/types/database";
 import {
   anchorFromPoint,
+  anchorInOpening,
+  distributeOnWall,
   arrowPlacement,
   buildTourStops,
   navArrows,
@@ -281,5 +283,55 @@ describe("street-view navigation", () => {
     const a = arrowPlacement({ x: 0, z: 0 }, { x: 1, z: 0 });
     expect(a.x).toBeCloseTo(0.7);
     expect(a.yaw).toBeCloseTo(Math.PI / 2);
+  });
+});
+
+describe("anchorInOpening", () => {
+  const door = opening({ wall: "north", wall_offset: 0.5, width_m: 2 }); // 2 m of a 10 m wall: 0.4..0.6
+  it("flags anchors inside a gap, with clearance", () => {
+    expect(anchorInOpening({ wall: "north", wall_offset: 0.5 }, room, [door])).toBe(true);
+    expect(anchorInOpening({ wall: "north", wall_offset: 0.61 }, room, [door])).toBe(true); // within 0.15 m margin
+    expect(anchorInOpening({ wall: "north", wall_offset: 0.7 }, room, [door])).toBe(false);
+  });
+  it("only looks at the same wall", () => {
+    expect(anchorInOpening({ wall: "south", wall_offset: 0.5 }, room, [door])).toBe(false);
+  });
+});
+
+describe("distributeOnWall", () => {
+  it("spreads loci evenly in their current order", () => {
+    const out = distributeOnWall(
+      [
+        { id: "c", wall_offset: 0.9, position: 2 },
+        { id: "a", wall_offset: 0.1, position: 0 },
+        { id: "b", wall_offset: 0.15, position: 1 },
+      ],
+      "north",
+      room,
+      []
+    );
+    const byId = Object.fromEntries(out.map((u) => [u.id, u.wall_offset]));
+    expect(byId.a).toBe(0.25);
+    expect(byId.b).toBe(0.5);
+    expect(byId.c).toBe(0.75);
+  });
+  it("skips loci that already sit in place and returns nothing for empty input", () => {
+    expect(distributeOnWall([{ id: "a", wall_offset: 0.5, position: 0 }], "north", room, [])).toEqual([]);
+    expect(distributeOnWall([], "north", room, [])).toEqual([]);
+  });
+  it("keeps loci out of door gaps", () => {
+    const door = opening({ wall: "north", wall_offset: 0.5, width_m: 2 }); // gap 0.4..0.6
+    const out = distributeOnWall(
+      [
+        { id: "a", wall_offset: 0.1, position: 0 },
+        { id: "b", wall_offset: 0.9, position: 1 },
+      ],
+      "north",
+      room,
+      [door]
+    );
+    expect(out).toHaveLength(2);
+    for (const u of out) expect(u.wall_offset < 0.4 || u.wall_offset > 0.6).toBe(true);
+    expect(out.find((u) => u.id === "a")!.wall_offset).toBeLessThan(out.find((u) => u.id === "b")!.wall_offset);
   });
 });

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useFetch } from "@/hooks/useFetch";
 import { parseTagInput } from "@/lib/deckLink";
 import type { Deck, Palace } from "@/types/database";
+import { CardGridSkeleton } from "@/components/ui/Skeleton";
 
 type DeckRow = Deck & { card_count: number; linked_count: number };
 
@@ -64,7 +65,7 @@ export default function DecksPage() {
       </p>
 
       <form onSubmit={handleCreate} className="card-base mb-6 grid gap-2 p-4 sm:grid-cols-[1fr_12rem_12rem_auto]">
-        <input className="input-base" placeholder="New deck title" value={title} onChange={(e) => setTitle(e.target.value)} />
+        <input className="input-base" placeholder="New deck title" aria-label="New deck title" value={title} onChange={(e) => setTitle(e.target.value)} />
         <select className="input-base" value={palaceId} onChange={(e) => setPalaceId(e.target.value)}>
           <option value="">No palace</option>
           {(palaces ?? []).map((p) => (
@@ -73,13 +74,13 @@ export default function DecksPage() {
             </option>
           ))}
         </select>
-        <input className="input-base" placeholder="tags, comma, separated" value={tagsText} onChange={(e) => setTagsText(e.target.value)} />
+        <input className="input-base" placeholder="tags, comma, separated" aria-label="tags, comma, separated" value={tagsText} onChange={(e) => setTagsText(e.target.value)} />
         <button className="btn-primary">Create</button>
       </form>
       {formError && <p className="mb-3 text-sm text-destructive">{formError}</p>}
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <input className="input-base max-w-xs" placeholder="Search decks…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <input className="input-base max-w-xs" placeholder="Search decks…" aria-label="Search decks…" value={q} onChange={(e) => setQ(e.target.value)} />
         {allTags.map((t) => (
           <button
             key={t}
@@ -94,7 +95,7 @@ export default function DecksPage() {
       </div>
 
       {loading ? (
-        <p className="text-muted-foreground">Loading decks…</p>
+        <CardGridSkeleton cards={4} />
       ) : error ? (
         <p className="text-destructive">Failed to load decks: {error}</p>
       ) : decks.length === 0 ? (
@@ -122,6 +123,11 @@ export default function DecksPage() {
                 {d.card_count > 0 && (
                   <Link href={`/quiz/${d.id}`} className="btn-primary !px-3 !py-1.5">
                     Quiz
+                  </Link>
+                )}
+                {d.card_count > d.linked_count && (
+                  <Link href={`/decks/${d.id}?port=1`} className="btn-outline !px-3 !py-1.5">
+                    Port {d.card_count - d.linked_count} to palace
                   </Link>
                 )}
                 <Link href={`/decks/${d.id}`} className="btn-outline !px-3 !py-1.5">

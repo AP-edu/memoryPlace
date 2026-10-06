@@ -64,14 +64,14 @@ function LoginForm() {
         <form onSubmit={handleSubmit} className="space-y-3">
           <input
             type="email"
-            placeholder="Email"
+            placeholder="Email" aria-label="Email" autoComplete="email"
             className="input-base"
             value={form.email}
             onChange={(e) => setForm({ ...form, email: e.target.value })}
           />
           <input
             type="password"
-            placeholder="Password"
+            placeholder="Password" aria-label="Password" autoComplete="current-password"
             className="input-base"
             value={form.password}
             onChange={(e) => setForm({ ...form, password: e.target.value })}

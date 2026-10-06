@@ -35,6 +35,7 @@ import {
   inwardNormal,
   lerpPose,
   toScene,
+  tourOrder,
   viewPoseForLocus,
   type TourStop,
 } from "@/lib/scene3d";
@@ -45,6 +46,8 @@ import Markdown from "@/components/Markdown";
 import { useSceneColors } from "./useSceneColors";
 import { buildChoices } from "@/lib/quiz";
 import type { SessionAnswer } from "@/lib/reviewTypes";
+import type { Blueprint } from "@/lib/blueprint";
+import MiniMap, { type MiniMapPose } from "./MiniMap";
 
 // First-person walk mode + guided tour. Movement/collision/focus/tour maths
 // live in lib/walk.ts and lib/scene3d.ts (pure, unit-tested); this file is
@@ -327,6 +330,10 @@ export interface WalkViewProps {
    * href for the full session summary (shown as a button on the tour card).
    */
   onTourComplete?: (answers: SessionAnswer[], got: number, total: number) => Promise<string | null | void> | void;
+  /** Top-down plan of this room's whole level; enables the live minimap. */
+  levelPlan?: Blueprint | null;
+  /** Minimap taps on another room / a linked door open that room. */
+  onGoRoom?: (roomId: string) => void;
   /** Extra controls rendered top-right. */
   actions?: React.ReactNode;
   /** Start the guided tour immediately. */
@@ -350,6 +357,8 @@ export default function WalkView({
   onExitDoor,
   onGrade,
   onTourComplete,
+  levelPlan = null,
+  onGoRoom,
   actions,
   autoTour = false,
   cardOrder = null,
@@ -431,6 +440,22 @@ export default function WalkView({
     }, 120);
     return () => window.clearInterval(t);
   }, [nav, navIndex, room]);
+
+  // Minimap pose bridge: poseRef is mutated every frame (never React state), so
+  // mirror it at ~8 Hz — plenty for a dot and wedge, no per-frame renders.
+  const [minimapPose, setMinimapPose] = useState<MiniMapPose | null>(null);
+  useEffect(() => {
+    if (!levelPlan) return;
+    const t = window.setInterval(() => {
+      const p = poseRef.current;
+      setMinimapPose((prev) =>
+        prev && Math.abs(prev.x - p.x) < 0.03 && Math.abs(prev.z - p.z) < 0.03 && Math.abs(prev.yaw - p.yaw) < 0.02
+          ? prev
+          : { x: p.x, z: p.z, yaw: p.yaw }
+      );
+    }, 120);
+    return () => window.clearInterval(t);
+  }, [levelPlan]);
 
   // ---------------------------------------------------------------- tour
   const [tour, setTour] = useState<{ index: number; revealed: boolean; results: Record<string, boolean> } | null>(null);
@@ -669,6 +694,28 @@ export default function WalkView({
   const lociCount = new Set(stops.map((s) => s.locus.id)).size;
   const targetTitle = nearDoor?.target_room_id ? roomTitles[nearDoor.target_room_id] ?? "next room" : null;
 
+  // Minimap: the n-th locus (study order) is the same locus as nav stop / tour stop n.
+  const mapLocusId = (n: number) => tourOrder(loci)[n - 1]?.id;
+  function goMapLocus(n: number) {
+    const id = mapLocusId(n);
+    if (!id) return;
+    if (tour) {
+      const i = stops.findIndex((s) => s.locus.id === id);
+      if (i >= 0) goto(i);
+      return;
+    }
+    const i = nav.findIndex((s) => s.kind === "locus" && s.locus.id === id);
+    if (i >= 0) goStop(i);
+  }
+  const navCurrent = nav[navIndex];
+  const activeLocusN = tour && stop
+    ? stop.locusIndex + 1
+    : focused
+      ? (stops.find((s) => s.locus.id === focused.locus.id)?.locusIndex ?? -1) + 1 || null
+      : navCurrent?.kind === "locus"
+        ? navCurrent.number
+        : null;
+
   return (
     <div className={`relative w-full overflow-hidden bg-background ${className}`}>
       <div
@@ -755,6 +802,20 @@ export default function WalkView({
           {actions}
         </div>
       </div>
+
+      {levelPlan && (
+        <div className={`absolute bottom-4 right-4 z-10 ${tour || focused ? "max-sm:hidden" : ""}`}>
+          <MiniMap
+            plan={levelPlan}
+            currentRoomId={room.id}
+            pose={minimapPose}
+            activeLocusN={activeLocusN}
+            roomTitles={roomTitles}
+            onGoLocus={goMapLocus}
+            onGoRoom={onGoRoom}
+          />
+        </div>
+      )}
 
       {nearDoor && targetTitle && !tour && onExitDoor && (
         <div className="pointer-events-none absolute inset-x-0 top-24 flex justify-center">

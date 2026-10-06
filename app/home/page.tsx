@@ -1,11 +1,13 @@
 "use client";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useFetch } from "@/hooks/useFetch";
 import OnboardingOverlay from "@/components/OnboardingOverlay";
+import PalaceList from "@/components/palaces/PalaceList";
 import type { HomeSummary } from "@/lib/homeSummary";
+import { PageSkeleton } from "@/components/ui/Skeleton";
 
 function greetingFor(hour: number): string {
   if (hour < 12) return "Good morning";
@@ -41,8 +43,6 @@ export default function HomePage() {
     `/api/home/summary?tz=${new Date().getTimezoneOffset()}`
   );
   const today = useSyncExternalStore(subscribeNoop, getToday, () => null);
-  const [title, setTitle] = useState("");
-  const [formError, setFormError] = useState<string | null>(null);
   // Guided tour: server-side state (users.onboarded_at / onboarding_step).
   const legacyOnboarded = useSyncExternalStore(subscribeNoop, getLegacyOnboarded, () => false);
 
@@ -68,28 +68,7 @@ export default function HomePage() {
     });
   }, [migrated, refetch]);
 
-  async function handleCreate(e: React.FormEvent) {
-    e.preventDefault();
-    if (!title.trim()) return setFormError("Title required");
-    const res = await fetch("/api/palaces", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: title.trim() }),
-    });
-    if (!res.ok) return setFormError("Failed to create palace");
-    setFormError(null);
-    setTitle("");
-    refetch();
-  }
-
-  async function handleDelete(id: string) {
-    if (!confirm("Delete this palace and everything in it?")) return;
-    const res = await fetch(`/api/palaces/${id}`, { method: "DELETE" });
-    if (!res.ok) return setFormError("Failed to delete palace");
-    refetch();
-  }
-
-  if (status === "loading" || loading) return <p className="p-6 text-muted-foreground">Loading home…</p>;
+  if (status === "loading" || loading) return <PageSkeleton label="Loading home" />;
   if (error) return <p className="p-6 text-destructive">Failed to load home: {error}</p>;
   if (!summary) return <p className="p-6 text-muted-foreground">Nothing here yet.</p>;
 
@@ -146,46 +125,13 @@ export default function HomePage() {
 
       <div className="mb-3 flex items-baseline justify-between">
         <h2 className="text-xl font-semibold">My Palaces</h2>
-        <span className="text-sm text-muted-foreground">
-          {summary.totalCards} card{summary.totalCards === 1 ? "" : "s"} total
-        </span>
+        <Link href="/palaces" className="text-sm text-link hover:underline">
+          All palaces →
+        </Link>
       </div>
-      <form onSubmit={handleCreate} data-tour="palace-form" className="mb-6 flex gap-2 rounded-2xl">
-        <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="New palace title"
-          className="input-base flex-1"
-        />
-        <button className="btn-primary">Add</button>
-      </form>
-      {formError && <p className="mb-4 text-sm text-destructive">{formError}</p>}
-      {summary.palaces.length === 0 ? (
-        <p className="mb-8 text-sm text-muted-foreground">No palaces yet — raise the first one above.</p>
-      ) : (
-        <div className="mb-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {summary.palaces.map((p) => (
-            <div key={p.palaceId} className="card-base group p-4 hover:shadow-card-hover">
-              <div className="flex items-start justify-between gap-2">
-                <Link href={`/palaces/${p.palaceId}`} className="font-medium transition-colors group-hover:text-link">
-                  {p.title}
-                </Link>
-                <button
-                  onClick={() => handleDelete(p.palaceId)}
-                  className="btn-danger"
-                  aria-label={`Delete ${p.title}`}
-                >
-                  Delete
-                </button>
-              </div>
-              <Link href={`/palaces/${p.palaceId}`} className="mt-0.5 block text-xs text-muted-foreground">
-                {p.rooms} room{p.rooms === 1 ? "" : "s"} · {p.cards} card{p.cards === 1 ? "" : "s"}
-                {p.due > 0 ? ` · ${p.due} due` : ""}
-              </Link>
-            </div>
-          ))}
-        </div>
-      )}
+      <div className="mb-8">
+        <PalaceList palaces={summary.palaces} onChanged={refetch} limit={3} />
+      </div>
 
       <div className="mb-3 flex items-baseline justify-between">
         <h2 className="text-xl font-semibold">Decks</h2>
@@ -209,8 +155,11 @@ export default function HomePage() {
               <span className="text-highlight">
                 {" "}
                 · {summary.decks.unanchored} not anchored to a palace yet{" "}
-                <Link href="/decks" className="underline">
-                  Port them
+                <Link
+                  href={summary.decks.portDeckId ? `/decks/${summary.decks.portDeckId}?port=1` : "/decks"}
+                  className="font-semibold underline"
+                >
+                  Port them now
                 </Link>
               </span>
             )}

@@ -4,10 +4,13 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useFetch } from "@/hooks/useFetch";
+import { useSearchParam } from "@/hooks/useSearchParam";
+import { useLevelPlan } from "@/hooks/useLevelPlan";
 import type { Card, Locus, Opening, Room, WallFace } from "@/types/database";
 import { httpLociActions } from "@/components/scene3d/actions";
 import ImportFromDeck from "@/components/decks/ImportFromDeck";
 import SendToDeck from "@/components/decks/SendToDeck";
+import { PageSkeleton } from "@/components/ui/Skeleton";
 
 // three.js is client-only and heavy: load the 3D editor on demand.
 // If WebGL is unavailable (e.g. hardware acceleration off) the editor shows
@@ -31,6 +34,8 @@ export default function RoomPage() {
     id ? `/api/cards?room=${id}` : null
   );
 
+  const toolParam = useSearchParam("tool");
+  const levelPlan = useLevelPlan(room?.palace_id, room?.id, { loci, openings });
   const [formError, setFormError] = useState<string | null>(null);
   const [deckPanel, setDeckPanel] = useState<"import" | "send" | null>(null);
 
@@ -123,7 +128,7 @@ export default function RoomPage() {
   }
 
   if (!id) return <p className="p-6">This room link is missing an id.</p>;
-  if (!room || loadingLoci || loadingCards) return <p className="p-6 text-muted-foreground">Loading room editor...</p>;
+  if (!room || loadingLoci || loadingCards) return <PageSkeleton label="Loading room editor" cards={2} />;
   if (lociError || cardsError || openingsError) {
     return <p className="p-6 text-destructive">Failed to load: {lociError ?? cardsError ?? openingsError}</p>;
   }
@@ -224,6 +229,9 @@ export default function RoomPage() {
           openings={openings ?? []}
           cards={cards ?? []}
           actions={lociActions}
+          initialTool={toolParam === "place" ? "place" : undefined}
+          levelPlan={levelPlan}
+          onGoRoom={(rid) => router.push(`/rooms/${rid}`)}
           onDeckChanged={() => {
             refetchLoci();
             refetchCards();

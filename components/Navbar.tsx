@@ -19,14 +19,25 @@ export default function Navbar() {
   return (
     <nav className="sticky top-0 z-40 border-b border-border bg-background/85 backdrop-blur transition-colors print:hidden">
       <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4 sm:px-6">
-        <div className="flex items-center gap-6">
-          <Link href="/home" className="flex items-center gap-2 text-lg font-extrabold tracking-tight text-foreground">
+        <div className="flex items-center gap-3 sm:gap-6">
+          <Link href="/home" className="flex items-center gap-2 text-lg font-extrabold tracking-tight text-foreground" aria-label="MemoryPlace home">
             <span aria-hidden className="grid h-7 w-7 place-items-center rounded-lg bg-primary text-sm font-black text-primary-foreground">M</span>
-            MemoryPlace
+            <span className="hidden sm:inline">MemoryPlace</span>
           </Link>
-          <div className="flex gap-4 text-sm">
-            <Link href="/home" className={linkClass(pathname === "/home" || pathname.startsWith("/home") || pathname.startsWith("/palaces") || pathname.startsWith("/rooms") || pathname.startsWith("/study") || pathname.startsWith("/walk"))}>
+          <div className="flex gap-3 text-sm sm:gap-4">
+            <Link href="/home" className={linkClass(pathname.startsWith("/home"))}>
               Home
+            </Link>
+            <Link
+              href="/palaces"
+              className={linkClass(
+                pathname.startsWith("/palaces") ||
+                  pathname.startsWith("/rooms") ||
+                  pathname.startsWith("/study") ||
+                  pathname.startsWith("/walk")
+              )}
+            >
+              Palaces
             </Link>
             <Link href="/decks" className={linkClass(pathname.startsWith("/decks") || pathname.startsWith("/quiz"))}>
               Decks
@@ -41,9 +52,12 @@ export default function Navbar() {
             )}
           </div>
         </div>
-        <div className="flex items-center gap-3 text-sm">
-          <ThemeToggle />
-          <span className="text-muted-foreground">{session.user.name}</span>
+        <div className="flex items-center gap-2 text-sm sm:gap-3">
+          {/* Phones: the switch lives on the Profile page so the bar fits. */}
+          <div className="hidden sm:block">
+            <ThemeToggle />
+          </div>
+          <span className="hidden text-muted-foreground md:inline">{session.user.name}</span>
           <button onClick={() => signOut({ callbackUrl: "/login" })} className="font-medium text-destructive hover:underline">
             Sign out
           </button>

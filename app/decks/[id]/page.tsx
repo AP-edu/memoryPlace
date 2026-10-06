@@ -7,6 +7,7 @@ import Markdown from "@/components/Markdown";
 import PortToPalace from "@/components/decks/PortToPalace";
 import { parseTagInput } from "@/lib/deckLink";
 import type { Deck, Flashcard, Palace } from "@/types/database";
+import { PageSkeleton } from "@/components/ui/Skeleton";
 
 interface LinkInfo {
   linked: boolean;
@@ -150,7 +151,7 @@ function DeckDetail() {
   const [portOne, setPortOne] = useState<string | null>(null);
   const [tagsText, setTagsText] = useState<string | null>(null);
 
-  if (loading) return <p className="p-6 text-muted-foreground">Loading deck…</p>;
+  if (loading) return <PageSkeleton label="Loading deck" cards={2} />;
   if (error || !deck) {
     return (
       <div className="p-6">
@@ -204,13 +205,14 @@ function DeckDetail() {
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
         {list.length > 0 && (
-          <Link href={`/quiz/${id}`} className="btn-primary">
+          // While cards are still unanchored, porting is the main call to action.
+          <Link href={`/quiz/${id}`} className={unanchored > 0 ? "btn-outline" : "btn-primary"}>
             Quiz this deck →
           </Link>
         )}
         {list.length > 0 && (
-          <button onClick={() => setPortAll((v) => !v)} className="btn-outline">
-            Port all to palace
+          <button onClick={() => setPortAll((v) => !v)} className={unanchored > 0 ? "btn-primary" : "btn-outline"}>
+            {unanchored > 0 ? `Port ${unanchored} to palace` : "Port all to palace"}
           </button>
         )}
         <select
@@ -228,7 +230,7 @@ function DeckDetail() {
         </select>
         <input
           className="input-base !w-auto"
-          placeholder="tags"
+          placeholder="tags" aria-label="tags"
           value={tagsText ?? (deck.tags ?? []).join(", ")}
           onChange={(e) => setTagsText(e.target.value)}
           onBlur={() => {
@@ -263,8 +265,8 @@ function DeckDetail() {
       )}
 
       <form onSubmit={addCard} className="mt-6 space-y-2">
-        <textarea className="input-base" rows={2} placeholder="Question (markdown ok)" value={question} onChange={(e) => setQuestion(e.target.value)} />
-        <textarea className="input-base" rows={2} placeholder="Answer" value={answer} onChange={(e) => setAnswer(e.target.value)} />
+        <textarea className="input-base" rows={2} placeholder="Question (markdown ok)" aria-label="Question (markdown ok)" value={question} onChange={(e) => setQuestion(e.target.value)} />
+        <textarea className="input-base" rows={2} placeholder="Answer" aria-label="Answer" value={answer} onChange={(e) => setAnswer(e.target.value)} />
         <button className="btn-primary">Add flashcard</button>
       </form>
       {formError && <p className="mt-2 text-sm text-destructive">{formError}</p>}
@@ -280,7 +282,7 @@ function DeckDetail() {
 
 export default function DeckPage() {
   return (
-    <Suspense fallback={<p className="p-6 text-muted-foreground">Loading deck…</p>}>
+    <Suspense fallback={<PageSkeleton label="Loading deck" cards={2} />}>
       <DeckDetail />
     </Suspense>
   );

@@ -12,7 +12,7 @@ import type { StudySession } from "@/types/database";
 
 // Only same-origin paths may be used as the "back" target.
 function safeBack(raw: string | null): string {
-  return raw && raw.startsWith("/") && !raw.startsWith("//") ? raw : "/home";
+  return raw && raw.startsWith("/") && !raw.startsWith("//") ? raw : "/palaces";
 }
 
 function pctText(n: number): string {
@@ -94,7 +94,7 @@ export default function ResultsContent() {
   const score = Number(params.get("score") ?? 0);
   const total = Number(params.get("total") ?? 0);
   const back = safeBack(params.get("back"));
-  const backLabel = params.get("backLabel") || "Back to Home";
+  const backLabel = params.get("backLabel") || "Back to palaces";
   const sessionId = params.get("session");
 
   const { data: saved } = useFetch<StudySession>(sessionId ? `/api/study-sessions/${sessionId}` : null);
@@ -176,7 +176,7 @@ export default function ResultsContent() {
         <Link href={back} className="btn-outline">
           {backLabel}
         </Link>
-        {back !== "/home" && (
+        {back !== "/home" && back !== "/palaces" && (
           <Link href="/home" className="btn-ghost">
             Home
           </Link>

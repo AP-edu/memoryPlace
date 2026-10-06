@@ -114,10 +114,20 @@ export const authOptions: NextAuthOptions = {
       }
       return true;
     },
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger }) {
       if (user) {
         token.id = user.id;
         token.role = user.role;
+      }
+      // useSession().update() after a profile edit: re-read name/email from
+      // the DB (never trust client-sent values) so the navbar refreshes
+      // without a re-login.
+      if (trigger === "update" && token.id) {
+        const { data } = await getSupabase().from("users").select("name, email").eq("id", token.id).maybeSingle();
+        if (data) {
+          token.name = data.name;
+          token.email = data.email;
+        }
       }
       return token;
     },

@@ -135,6 +135,30 @@ describe("rollupDecks", () => {
           { deck_id: "d1", source_card_id: "c1" },
         ],
       }).decks
-    ).toEqual({ decks: 2, flashcards: 2, unanchored: 1 });
+    ).toEqual({ decks: 2, flashcards: 2, unanchored: 1, portDeckId: "d1" });
+  });
+});
+
+describe("rollupDecks portDeckId", () => {
+  it("points at the deck with the most unanchored flashcards, null when all anchored", () => {
+    expect(
+      buildHomeSummary({
+        palaces: [], rooms: [], loci: [], cards: [], reviews: [], sessions: [], now: NOW,
+        deckCount: 2,
+        flashcards: [
+          { deck_id: "a", source_card_id: null },
+          { deck_id: "b", source_card_id: null },
+          { deck_id: "b", source_card_id: null },
+          { deck_id: "b", source_card_id: "c1" },
+        ],
+      }).decks.portDeckId
+    ).toBe("b");
+    expect(
+      buildHomeSummary({
+        palaces: [], rooms: [], loci: [], cards: [], reviews: [], sessions: [], now: NOW,
+        deckCount: 1,
+        flashcards: [{ deck_id: "a", source_card_id: "c1" }],
+      }).decks.portDeckId
+    ).toBeNull();
   });
 });

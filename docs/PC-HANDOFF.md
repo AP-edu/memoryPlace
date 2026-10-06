@@ -37,7 +37,12 @@ All green on the laptop: `npx tsc --noEmit` + `npm run lint` + `npm run test`
    deleted on the laptop (stale validator refs to deleted routes) — first
    build regenerates it.
 2. **`npm run build`** — must be green before anything else.
-3. **Real-GPU live check** (dev server, not Playwright software WebGL):
+3. **Real-GPU live check** (also see SONNET-NOTES.md "Launch UX pass — NOT verified"):
+   - Room editor: click a wall to place (readout, undo), drag a marker (Shift = height), click a
+     doorway ("that's a doorway"), `P`/`V`/`Esc`, Spread evenly, Import deck leaves place mode.
+   - Palace 3D tab: loci visible, `+ Add loci` on the selected room lands in place mode.
+   - Walk: minimap wedge follows you, tap a locus (glides), tap a door (opens next room), phone width.
+   - Profile: rename, change email, change password, then sign in with the new password. (dev server, not Playwright software WebGL):
    - Room walk: Start tour, Due-first / Walkthrough toggle, MCQ grading,
      door walk-through.
    - Palace tour (`/walk/palace/[id]?tour=1`): room stepper, Prev/Next room,

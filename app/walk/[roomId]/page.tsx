@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useFetch } from "@/hooks/useFetch";
 import { useSearchParam } from "@/hooks/useSearchParam";
+import { useLevelPlan } from "@/hooks/useLevelPlan";
 import type { Card, Locus, Opening, Room } from "@/types/database";
 import { returnDoor, spawnAtDoor } from "@/lib/scene3d";
 import { sortPlayQueue, type QueueItem } from "@/lib/srs";
@@ -35,6 +36,8 @@ export default function WalkPage() {
   // Where we came from (?from=<roomId>) decides the spawn door.
   const fromId = useSearchParam("from");
   const tourParam = useSearchParam("tour") === "1";
+
+  const levelPlan = useLevelPlan(room?.palace_id, room?.id);
 
   const roomTitles = useMemo(() => Object.fromEntries((siblings ?? []).map((r) => [r.id, r.title])), [siblings]);
   const spawn = useMemo(() => {
@@ -109,6 +112,8 @@ export default function WalkPage() {
       onExitDoor={onExitDoor}
       onGrade={onGrade}
       onTourComplete={onTourComplete}
+      levelPlan={levelPlan}
+      onGoRoom={(id) => router.push(`/walk/${id}?from=${room.id}`)}
       autoTour={tourParam}
       cardOrder={cardOrder}
       className="h-[calc(100dvh-3.5rem)]"

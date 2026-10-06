@@ -40,6 +40,9 @@ Order of delivery from the vision docs; each phase ends green on tsc + eslint +
   `/api/links`), deck quiz on the shared SRS engine, full session summary,
   server-side guided onboarding, Greek theme (blue sky + marble / starry
   night). Code DONE + build green; PC live-click verdict pending.
+- I. Launch UX: Palaces tab, profile edits, loci insertion UX, whole-level minimap
+  (`lib/blueprint.ts` + `components/scene3d/MiniMap.tsx`), error/404/loading shell, metadata +
+  manifest. Code DONE + build green; canvas-click verdict pending on the PC.
 
 ## Geometry convention (Phase A, source of truth for B/F)
 

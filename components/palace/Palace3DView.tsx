@@ -2,18 +2,19 @@
 import { useMemo } from "react";
 import { Canvas } from "@react-three/fiber";
 import { Html, OrbitControls } from "@react-three/drei";
-import type { Opening, Room } from "@/types/database";
+import type { Locus, Opening, Room } from "@/types/database";
 import { palaceBounds, palaceCameraDistance, palaceLevelRooms } from "@/lib/palaceScene";
 import { toScene } from "@/lib/scene3d";
-import { RoomShell, SceneLights } from "../scene3d/RoomShell";
+import { LocusMarkers, RoomShell, SceneLights } from "../scene3d/RoomShell";
 import { SceneSky } from "../scene3d/SceneSky";
 import { useSceneColors } from "../scene3d/useSceneColors";
 import { SceneGate } from "../scene3d/SceneBoundary";
 
 /**
- * Whole-palace 3D overview: every room on ONE level, orbitable.
- * Read-only — click a room to select it (syncs with the 2D canvas and the
- * room cards). Editing stays in the 2D blueprint and the per-room editor.
+ * Whole-palace 3D overview: every room on ONE level, orbitable, with every
+ * locus drawn as a small marker. Click a room to select it (syncs with the 2D
+ * canvas and the room cards); the selected room gets an "Add loci" link that
+ * opens its editor straight in place mode. Placing itself stays per-room.
  */
 export default function Palace3DView({
   rooms,
@@ -22,10 +23,13 @@ export default function Palace3DView({
   fallbackLevelId,
   selectedId,
   onSelect,
+  loci = [],
   className = "h-[560px]",
 }: {
   rooms: Room[];
   openings: Opening[];
+  /** Loci in this palace (any level); only those in shown rooms are drawn. */
+  loci?: Locus[];
   levelId: string | null;
   fallbackLevelId: string | null;
   selectedId?: string | null;
@@ -77,10 +81,24 @@ export default function Palace3DView({
               }}
             >
               <RoomShell room={room} openings={roomOpenings} colors={colors} cutaway />
+              <LocusMarkers
+                room={room}
+                loci={loci.filter((l) => l.room_id === room.id)}
+                colors={colors}
+                showPath={false}
+                showLabels={false}
+              />
               {room.id === selectedId && (
                 <Html position={toScene({ x: room.width / 2, y: room.height + 0.6, z: room.depth / 2 })} center>
-                  <div className="whitespace-nowrap rounded-full bg-primary px-2 py-0.5 text-[11px] font-semibold text-primary-foreground shadow-md">
-                    {room.title}
+                  <div className="flex items-center gap-2 whitespace-nowrap rounded-full bg-primary px-2.5 py-1 text-[11px] font-semibold text-primary-foreground shadow-md">
+                    {room.title} · {loci.filter((l) => l.room_id === room.id).length} loci
+                    <a
+                      href={`/rooms/${room.id}?tool=place`}
+                      className="rounded-full bg-accent px-2 py-0.5 text-accent-foreground hover:opacity-90"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      + Add loci
+                    </a>
                   </div>
                 </Html>
               )}

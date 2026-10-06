@@ -43,6 +43,8 @@ export interface DeckCounts {
   flashcards: number;
   /** Flashcards with no live-linked palace card (no SRS schedule yet). */
   unanchored: number;
+  /** Deck with the most unanchored flashcards (deep link target for "Port them"); null when none. */
+  portDeckId: string | null;
 }
 
 export interface PalaceCounts {
@@ -158,10 +160,21 @@ export function streakDays(sessionDates: string[], nowMs: number, tzOffsetMin = 
 }
 
 export function rollupDecks(deckCount: number, flashcards: SummaryFlashcard[]): DeckCounts {
+  const loose = new Map<string, number>();
+  for (const f of flashcards) if (!f.source_card_id) loose.set(f.deck_id, (loose.get(f.deck_id) ?? 0) + 1);
+  let portDeckId: string | null = null;
+  let most = 0;
+  for (const [deckId, n] of loose) {
+    if (n > most) {
+      most = n;
+      portDeckId = deckId;
+    }
+  }
   return {
     decks: deckCount,
     flashcards: flashcards.length,
     unanchored: flashcards.filter((f) => !f.source_card_id).length,
+    portDeckId,
   };
 }
 

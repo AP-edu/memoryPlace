@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useFetch } from "@/hooks/useFetch";
 import { useSearchParam } from "@/hooks/useSearchParam";
+import { useLevelPlan } from "@/hooks/useLevelPlan";
 import type { Card, Locus, Opening, Room } from "@/types/database";
 import { sortPlayQueue, type QueueItem } from "@/lib/srs";
 import WalkView from "@/components/scene3d/WalkView";
@@ -44,6 +45,7 @@ export default function PalaceWalkPage() {
   );
 
   const roomTitles = useMemo(() => Object.fromEntries((orderedRooms ?? []).map((r) => [r.id, r.title])), [orderedRooms]);
+  const levelPlan = useLevelPlan(palaceId, currentId);
 
   const goRoom = useCallback(
     (id: string) => {
@@ -149,6 +151,8 @@ export default function PalaceWalkPage() {
         onExitDoor={onExitDoor}
         onGrade={onGrade}
         onTourComplete={onTourComplete}
+        levelPlan={levelPlan}
+        onGoRoom={goRoom}
         autoTour={tourParam}
         cardOrder={cardOrder}
         className="h-[calc(100dvh-3.5rem)]"
