@@ -88,9 +88,15 @@ export async function PUT(req: NextRequest) {
   const denied = await authorize(session, flashcard_id, card_id);
   if (denied) return NextResponse.json({ error: denied.error }, { status: denied.status });
 
-  // Only push across a real, mutual link.
-  const { data: f } = await supabase.from("flashcards").select("source_card_id").eq("id", flashcard_id).maybeSingle();
-  if (f?.source_card_id !== card_id) return NextResponse.json({ error: "These are not linked" }, { status: 409 });
+  // Only push across a real, mutual link: both FK sides must agree, so a
+  // half-linked row (crashed import, concurrent unlink) can never mistarget.
+  const [{ data: f }, { data: c }] = await Promise.all([
+    supabase.from("flashcards").select("source_card_id").eq("id", flashcard_id).maybeSingle(),
+    supabase.from("cards").select("source_flashcard_id").eq("id", card_id).maybeSingle(),
+  ]);
+  if (f?.source_card_id !== card_id || c?.source_flashcard_id !== flashcard_id) {
+    return NextResponse.json({ error: "These are not linked" }, { status: 409 });
+  }
 
   const r = await pushContent(flashcard_id, card_id, direction);
   if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
@@ -104,10 +110,22 @@ export async function DELETE(req: NextRequest) {
   const cardId = req.nextUrl.searchParams.get("card_id");
   const flashcardId = req.nextUrl.searchParams.get("flashcard_id");
   if (!cardId && !flashcardId) return NextResponse.json({ error: "card_id or flashcard_id required" }, { status: 400 });
-  const denied = await authorize(session, flashcardId, cardId);
+
+  // Resolve the twin first, then authorize BOTH sides: unlinking clears both
+  // FK columns, so the caller must own each side they touch.
+  let twinCardId = cardId;
+  let twinFlashcardId = flashcardId;
+  if (flashcardId && !cardId) {
+    const { data } = await supabase.from("flashcards").select("source_card_id").eq("id", flashcardId).maybeSingle();
+    twinCardId = data?.source_card_id ?? null;
+  } else if (cardId && !flashcardId) {
+    const { data } = await supabase.from("cards").select("source_flashcard_id").eq("id", cardId).maybeSingle();
+    twinFlashcardId = data?.source_flashcard_id ?? null;
+  }
+  const denied = await authorize(session, twinFlashcardId, twinCardId);
   if (denied) return NextResponse.json({ error: denied.error }, { status: denied.status });
 
-  const r = await unlinkPair({ flashcardId: flashcardId ?? undefined, cardId: cardId ?? undefined });
+  const r = await unlinkPair({ flashcardId: twinFlashcardId ?? undefined, cardId: twinCardId ?? undefined });
   if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
   return NextResponse.json({ linked: false });
 }

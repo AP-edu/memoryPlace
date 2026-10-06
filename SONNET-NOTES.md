@@ -35,7 +35,29 @@ the PC pass (real GPU + live clicking) knows exactly where to look.
 - Print dialog output (the SVG blueprint renders on screen; paper layout not checked).
 - FPS: the sky dome adds one sphere and (night only) 1,800 star points per canvas.
 
-## Decisions made without asking (reasonable defaults, easy to change)
+## Review fix pass (post-Sonnet, pre-ship)
+
+A read-only review found 5 API ship-blockers; all fixed and re-verified
+(`tsc` + `lint` + 126 tests green, both live smoke suites green, plus a
+targeted suite: bogus export ids → 404, bad session scores → 400):
+
+1. `app/api/exports/route.ts` — source fetches now fail closed (every fetch
+   checks `error`; unknown card/locus/room ids → 404; rooms mismatch → 404).
+2. `app/api/links/route.ts` DELETE — twin resolved first, then BOTH sides
+   authorized; a caller can no longer clear a link touching a foreign row.
+3. `app/api/links/route.ts` PUT — push requires both FK directions to agree,
+   so half-linked rows can never mistarget content.
+4. `app/api/imports/route.ts` + `exports/route.ts` — second-half link mapping
+   now joins on the link column just written (select-by-`source_*_id`), never
+   by insert/timestamp order; 409 surfaces when a row was linked meanwhile.
+5. `app/api/study-sessions/route.ts` — scores must be integers with
+   `0 <= score <= total`, `total > 0`, `answers.length <= total`; ownership via
+   `canModify` (admin bypass consistent with every other route).
+6. Drive-by: `app/api/cards/[id]/route.ts` dead `front` variable removed.
+
+Remaining minor items from that review (not blockers, still open): `.single()`
+masking 500s as 404s in flashcards/cards reads, `String()` coercion of
+non-string Q/A, PG error-message leakage in 500s, `MAX_STEP=5` vs 4 steps.
 
 - **New migration** `20261007000003_deck_sessions_onboarding_step.sql`:
   `study_sessions.deck_id` (FK, SET NULL, indexed) and `users.onboarding_step`.

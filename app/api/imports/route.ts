@@ -132,20 +132,41 @@ export async function POST(req: NextRequest) {
     if (cardError || !cards) throw new Error(cardError?.message ?? "Could not create cards");
     cards.forEach((c: { id: string }) => createdCardIds.push(c.id));
 
-    // Second half of each link pair. cards[i] corresponds to fresh[i].
+    // Second half of each link pair, matched by the link column (never by
+    // insert order — concurrent imports can interleave returned rows).
+    const { data: linkedCards, error: linkError } = await supabase
+      .from("cards")
+      .select("id, source_flashcard_id")
+      .in(
+        "source_flashcard_id",
+        fresh.map((f: { id: string }) => f.id)
+      );
+    if (linkError || !linkedCards || linkedCards.length !== fresh.length) {
+      throw new Error(linkError?.message ?? "Could not verify the new links");
+    }
+    const cardByFlashcard = new Map(
+      (linkedCards as Array<{ id: string; source_flashcard_id: string }>).map((c) => [c.source_flashcard_id, c.id])
+    );
     const results = await Promise.all(
-      fresh.map((f: { id: string }, i: number) =>
-        supabase.from("flashcards").update({ source_card_id: cards[i].id }).eq("id", f.id)
-      )
+      fresh.map((f: { id: string }) => {
+        const cid = cardByFlashcard.get(f.id);
+        if (!cid) return Promise.resolve({ error: { message: "Link target missing" } });
+        return supabase.from("flashcards").update({ source_card_id: cid }).eq("id", f.id);
+      })
     );
     const failed = results.find((r) => r.error);
-    if (failed?.error) throw new Error(failed.error.message);
+    if (failed?.error) {
+      const err = failed.error as { code?: string; message?: string };
+      if (err.code === "23505") throw Object.assign(new Error("One of these cards was linked meanwhile"), { status: 409 });
+      throw new Error(err.message ?? "Could not link the new cards");
+    }
 
     return NextResponse.json({ loci, cards, skipped, room_id }, { status: 201 });
   } catch (err) {
+    const status = err instanceof Error && "status" in err ? (err as { status: number }).status : 500;
     // Clear any half-links before removing the cards (SET NULL would anyway).
     await supabase.from("flashcards").update({ source_card_id: null }).in("id", fresh.map((f: { id: string }) => f.id));
     await rollback();
-    return NextResponse.json({ error: err instanceof Error ? err.message : "Import failed" }, { status: 500 });
+    return NextResponse.json({ error: err instanceof Error ? err.message : "Import failed" }, { status: status });
   }
 }

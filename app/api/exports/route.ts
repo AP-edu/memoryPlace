@@ -36,22 +36,41 @@ export async function POST(req: NextRequest) {
   let cardRows: CardRow[] = [];
 
   if (Array.isArray(card_ids) && card_ids.length) {
-    const { data } = await supabase.from("cards").select("*").in("id", card_ids);
+    const { data, error } = await supabase.from("cards").select("*").in("id", card_ids);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     cardRows = (data ?? []) as CardRow[];
+    if (cardRows.length !== new Set(card_ids).size) {
+      return NextResponse.json({ error: "Some cards were not found" }, { status: 404 });
+    }
     const lids = [...new Set(cardRows.map((c) => c.locus_id))];
-    const { data: l } = await supabase.from("loci").select("id, room_id, position, created_at").in("id", lids);
+    const { data: l, error: lociError } = await supabase
+      .from("loci")
+      .select("id, room_id, position, created_at")
+      .in("id", lids);
+    if (lociError) return NextResponse.json({ error: lociError.message }, { status: 500 });
     lociRows = (l ?? []) as LocusRow[];
   } else if (locus_id) {
-    const { data: l } = await supabase.from("loci").select("id, room_id, position, created_at").eq("id", locus_id);
+    const { data: l, error: lociError } = await supabase
+      .from("loci")
+      .select("id, room_id, position, created_at")
+      .eq("id", locus_id);
+    if (lociError) return NextResponse.json({ error: lociError.message }, { status: 500 });
     lociRows = (l ?? []) as LocusRow[];
-    const { data } = await supabase.from("cards").select("*").eq("locus_id", locus_id);
+    if (lociRows.length === 0) return NextResponse.json({ error: "Locus not found" }, { status: 404 });
+    const { data, error } = await supabase.from("cards").select("*").eq("locus_id", locus_id);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     cardRows = (data ?? []) as CardRow[];
   } else {
-    const { data: l } = await supabase.from("loci").select("id, room_id, position, created_at").eq("room_id", room_id);
+    const { data: l, error: lociError } = await supabase
+      .from("loci")
+      .select("id, room_id, position, created_at")
+      .eq("room_id", room_id);
+    if (lociError) return NextResponse.json({ error: lociError.message }, { status: 500 });
     lociRows = (l ?? []) as LocusRow[];
     const ids = lociRows.map((x) => x.id);
     if (ids.length) {
-      const { data } = await supabase.from("cards").select("*").in("locus_id", ids);
+      const { data, error } = await supabase.from("cards").select("*").in("locus_id", ids);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
       cardRows = (data ?? []) as CardRow[];
     }
   }
@@ -60,11 +79,18 @@ export async function POST(req: NextRequest) {
   }
 
   const roomIds = [...new Set(lociRows.map((l) => l.room_id))];
-  const { data: rooms } = await supabase.from("rooms").select("id, user_id, title, palace_id").in("id", roomIds);
-  for (const r of rooms ?? []) {
+  const { data: rooms, error: roomsError } = await supabase
+    .from("rooms")
+    .select("id, user_id, title, palace_id")
+    .in("id", roomIds);
+  if (roomsError) return NextResponse.json({ error: roomsError.message }, { status: 500 });
+  if (!rooms || rooms.length !== roomIds.length) {
+    return NextResponse.json({ error: "Room not found" }, { status: 404 });
+  }
+  for (const r of rooms) {
     if (!canModify(session, r.user_id)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
-  const primaryRoom = (rooms ?? [])[0];
+  const primaryRoom = rooms[0];
 
   // Spatial order: loci by tour order, then cards by position within a locus.
   const locusRank = new Map(tourOrder(lociRows as never[]).map((l: { id: string }, i: number) => [l.id, i]));
@@ -124,20 +150,44 @@ export async function POST(req: NextRequest) {
     if (error || !flashcards) throw new Error(error?.message ?? "Could not create flashcards");
     flashcards.forEach((f: { id: string }) => createdIds.push(f.id));
 
+    // Map each new flashcard back to its card via the link column we just
+    // wrote — never by timestamp order, which concurrent exports can interleave.
+    const { data: linked, error: linkError } = await supabase
+      .from("flashcards")
+      .select("id, source_card_id")
+      .in(
+        "source_card_id",
+        fresh.map((c) => c.id)
+      );
+    if (linkError || !linked || linked.length !== fresh.length) {
+      throw new Error(linkError?.message ?? "Could not verify the new links");
+    }
+    const flashcardByCard = new Map(
+      (linked as Array<{ id: string; source_card_id: string }>).map((f) => [f.source_card_id, f.id])
+    );
+    const results = await Promise.all(
+      fresh.map((c) => {
+        const fid = flashcardByCard.get(c.id);
+        if (!fid) return Promise.resolve({ error: { message: "Link target missing" } });
+        return supabase.from("cards").update({ source_flashcard_id: fid }).eq("id", c.id);
+      })
+    );
+    const failed = results.find((r) => r.error);
+    if (failed?.error) {
+      const err = failed.error as { code?: string; message?: string };
+      if (err.code === "23505") throw Object.assign(new Error("One of these cards was linked meanwhile"), { status: 409 });
+      throw new Error(err.message ?? "Could not link the new cards");
+    }
+
     const sorted = [...flashcards].sort((a: { created_at: string }, b: { created_at: string }) =>
       a.created_at.localeCompare(b.created_at)
     );
-    const results = await Promise.all(
-      fresh.map((c, i) => supabase.from("cards").update({ source_flashcard_id: sorted[i].id }).eq("id", c.id))
-    );
-    const failed = results.find((r) => r.error);
-    if (failed?.error) throw new Error(failed.error.message);
-
     return NextResponse.json({ deck_id: targetDeckId, flashcards: sorted, skipped }, { status: 201 });
   } catch (err) {
+    const status = err instanceof Error && "status" in err ? (err as { status: number }).status : 500;
     await supabase.from("cards").update({ source_flashcard_id: null }).in("id", fresh.map((c) => c.id));
     if (createdIds.length) await supabase.from("flashcards").delete().in("id", createdIds);
     if (createdDeck) await supabase.from("decks").delete().eq("id", targetDeckId);
-    return NextResponse.json({ error: err instanceof Error ? err.message : "Export failed" }, { status: 500 });
+    return NextResponse.json({ error: err instanceof Error ? err.message : "Export failed" }, { status });
   }
 }

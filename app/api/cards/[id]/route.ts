@@ -52,15 +52,12 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
   if (type !== undefined) updates.type = type;
   if (position !== undefined) updates.position = position;
   if (options !== undefined) {
-    const merged = {
-      front: back !== undefined ? back : card.front,
-      back: back !== undefined ? back : card.back,
-    };
+    const backSource = back !== undefined ? back : card.back;
     const backText =
-      typeof merged.back === "string"
-        ? merged.back
-        : typeof merged.back?.text === "string"
-          ? merged.back.text
+      typeof backSource === "string"
+        ? backSource
+        : typeof backSource?.text === "string"
+          ? backSource.text
           : "";
     const opt = validateOptionsInput(options, backText);
     if (!opt.ok) return NextResponse.json({ error: opt.error }, { status: 400 });
