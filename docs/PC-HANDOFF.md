@@ -46,9 +46,12 @@ All green on the laptop: `npx tsc --noEmit` + `npm run lint` + `npm run test`
    - Onboarding: fresh user sees checklist, steps tick off, Dismiss persists.
    - Login page: Google button errors cleanly until env is set (expected);
      credentials login → `/home`.
-4. **Supabase hosted project** — apply all 7 migrations in
-   `supabase/migrations/` (newest: `card_options`, `card_position`).
-   Verify tables: `card_reviews`, `cards.options`, `cards.position`.
+4. **Supabase hosted project** — apply all 10 migrations in
+   `supabase/migrations/` (newest: `users_base_hardening`).
+   Verify tables: `card_reviews`, `cards.options`, `cards.position`,
+   `decks.palace_id`/`decks.tags`, `cards.source_flashcard_id`,
+   `flashcards.source_card_id`, `users.onboarded_at`,
+   `users` email uniqueness (`users_email_lower_uniq`) + role check.
 5. **Vercel** — import repo, set env, deploy:
    - `SUPABASE_URL` + `SUPABASE_SECRET_KEY` (service-role bypass is the app model)
    - `NEXTAUTH_SECRET`, `NEXTAUTH_URL=https://<your>.vercel.app`

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomBytes, createHash } from "crypto";
 import { supabase } from "@/lib/supabase";
+import { normalizeEmail } from "@/lib/email";
 
 const GENERIC = "If an account exists for that email, a reset link is on its way.";
 
@@ -20,16 +21,20 @@ export async function POST(req: NextRequest) {
   if (typeof rawEmail !== "string" || !rawEmail.trim()) {
     return NextResponse.json({ error: "Email required" }, { status: 400 });
   }
-  const email = rawEmail.trim();
+  const email = normalizeEmail(rawEmail);
+  if (!email) {
+    return NextResponse.json({ error: "Email required" }, { status: 400 });
+  }
 
-  const { data: user } = await supabase
+  const { data: user, error: lookupError } = await supabase
     .from("users")
     .select("id")
-    .ilike("email", email)
+    .eq("email", email)
     .maybeSingle();
 
   // Always respond the same way so callers can't enumerate accounts.
-  if (!user) return NextResponse.json({ message: GENERIC });
+  // (A lookup error is treated as unknown — never leak DB state here.)
+  if (lookupError || !user) return NextResponse.json({ message: GENERIC });
 
   // Invalidate older unused tokens, then issue a single-use 1-hour token.
   await supabase.from("password_reset_tokens").delete().eq("user_id", user.id).is("used_at", null);

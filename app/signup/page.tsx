@@ -3,36 +3,58 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { signIn } from "next-auth/react";
+import { isValidEmail, MIN_PASSWORD_LENGTH, normalizeEmail } from "@/lib/email";
 
 export default function SignupPage() {
   const router = useRouter();
   const [form, setForm] = useState({ name: "", email: "", password: "" });
   const [error, setError] = useState("");
+  const [sending, setSending] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError("");
-
-    const res = await fetch("/api/auth/signup", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
-    });
-
-    if (!res.ok) {
-      const data = await res.json();
-      setError(data.error || "Signup failed");
-      return;
+    if (sending) return;
+    const email = normalizeEmail(form.email);
+    if (!form.name.trim()) return setError("Enter your name");
+    if (!isValidEmail(email)) return setError("Enter a valid email address");
+    if (form.password.length < MIN_PASSWORD_LENGTH) {
+      return setError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters`);
     }
+    setError("");
+    setSending(true);
 
-    const result = await signIn("credentials", {
-      email: form.email,
-      password: form.password,
-      redirect: false,
-    });
+    try {
+      const res = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: form.name.trim(), email, password: form.password }),
+      });
 
-    if (result?.ok) router.push("/home");
-    else setError("Account created, but login failed. Try logging in manually.");
+      let data: { error?: string } = {};
+      try {
+        data = await res.json();
+      } catch {
+        return setError("Signup failed (bad server response). Try again.");
+      }
+
+      if (!res.ok) {
+        setError(data.error || "Signup failed");
+        return;
+      }
+
+      const result = await signIn("credentials", {
+        email,
+        password: form.password,
+        redirect: false,
+      });
+
+      if (result?.ok) router.push("/home");
+      else setError("Account created, but login failed. Try logging in manually.");
+    } catch {
+      setError("Network error. Check your connection and try again.");
+    } finally {
+      setSending(false);
+    }
   }
 
   return (
@@ -62,7 +84,9 @@ export default function SignupPage() {
             value={form.password}
             onChange={(e) => setForm({ ...form, password: e.target.value })}
           />
-          <button className="btn-primary w-full">Create Account</button>
+          <button className="btn-primary w-full" disabled={sending}>
+            {sending ? "Creating account…" : "Create Account"}
+          </button>
         </form>
         <div className="my-4 flex items-center gap-3 text-xs text-muted-foreground">
           <span className="h-px flex-1 bg-border" aria-hidden />

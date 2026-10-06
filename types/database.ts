@@ -6,12 +6,19 @@ export interface User {
   password: string;
   role: "user" | "admin";
   created_at: string;
+  /** Server onboarding flag (migration 20261007000001). Null = never onboarded. */
+  onboarded_at: string | null;
 }
 
 export interface Deck {
   id: string;
   title: string;
-  course_id: string;
+  /** Legacy grouping; nullable since 20261007000000_decks_standalone. */
+  course_id: string | null;
+  /** Optional palace link (standalone decks have null). */
+  palace_id: string | null;
+  /** Subject tags for organizing decks without courses. */
+  tags: string[];
   owner: string;
   created_at: string;
 }
@@ -22,6 +29,8 @@ export interface Flashcard {
   answer: string;
   deck_id: string;
   owner: string;
+  /** Live-link twin in palace world (migration 20261007000001). */
+  source_card_id: string | null;
   created_at: string;
 }
 
@@ -158,6 +167,8 @@ export interface Card {
   options?: string[] | null;
   /** Study order within the locus (0..n-1, mirrors loci.position). */
   position?: number | null;
+  /** Live-link twin in deck world (migration 20261007000001). */
+  source_flashcard_id?: string | null;
   media_refs: unknown[];
   created_at: string;
 }

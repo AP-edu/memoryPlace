@@ -32,22 +32,28 @@ The first registered user automatically becomes an admin (can access `/admin` an
 
 ## Routes
 
-- `/login`, `/signup` — authentication
+- `/login`, `/signup` — authentication (email normalized + validated, `?error=` surfaced)
 - `/home` — Palace Overview + due summary (protected)
+- `/palaces` — redirect shim → `/home`
 - `/palaces/[id]` — 2D blueprint / 3D palace, rooms, study + walk links
+- `/palaces/[id]/print` — printable blueprint + copy-text
 - `/rooms/[id]` — room editor (loci, cards, openings)
 - `/walk/[roomId]`, `/walk/palace/[palaceId]` — first-person walk + guided tour
 - `/study/palace/[palaceId]`, `/study/[roomId]` — due-first / walkthrough sessions
 - `/quiz/[deckId]` — retained straight-quiz flow
 - `/results` — latest quiz score
+- `/profile` — stats + continue/weakest links
+- `/forgot-password`, `/reset-password/[token]` — password reset
 - `/admin` — all palaces (admin only)
 
 ## API
 
-REST endpoints under `/api/palaces`, `/api/rooms`, `/api/loci`, `/api/cards`, `/api/reviews`, `/api/study-sessions`, `/api/auth/*` (plus `/api/decks`, `/api/flashcards`, `/api/quiz-results` for the retained straight-quiz flow). All require a session except signup. Ownership rules: regular users see/manage only their own rows; admins see/manage all.
+REST endpoints under `/api/palaces`, `/api/rooms`, `/api/levels`, `/api/openings`, `/api/loci`, `/api/cards`, `/api/reviews`, `/api/study-sessions`, `/api/home/summary`, `/api/auth/*` (plus `/api/decks`, `/api/flashcards`, `/api/quiz-results` for the retained straight-quiz flow). All require a session except signup. Ownership rules: regular users see/manage only their own rows; admins see/manage all.
 
 ## Scripts
 
 - `npm run dev` — development server
 - `npm run build` / `npm start` — production build
 - `npm run lint` — ESLint
+- `npm run test` — vitest run
+- `npx tsc --noEmit` — typecheck
