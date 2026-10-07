@@ -3,94 +3,120 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /*
- * Design tokens. Quizlet-inspired, more black and blue: near-black/indigo
- * surfaces, an electric indigo primary, and a sparing yellow highlight.
- * Every colour in the UI (and the 3D scene via --scene-*) comes from here.
- * Contrast (WCAG AA, >= 4.5:1 for body text), measured for each fg/bg pair:
- *   dark : foreground/background 18.2, muted-fg/card 7.3, link/card 6.5,
- *          white on primary 5.3, white on primary-hover 4.6, destructive/card 6.0
- *   light: foreground/background 18.2, muted-fg/card 6.2, link/card 6.4,
- *          white on primary 5.3, highlight/card 5.9, destructive/background 5.2
- * Primary hover is #5163ff rather than #5a6bff: white text on #5a6bff is
- * only 4.2:1.
+ * Design tokens. Ancient Greece: light is blue sky and white marble (Aegean
+ * blue primary, laurel-gold accent), dark is a starry night over moonlit
+ * stone. Every colour in the UI (and the 3D scene via --scene-*) comes from
+ * here. Contrast (WCAG AA, >= 4.5:1 for body text), enforced per fg/bg pair
+ * by lib/themeContrast.test.ts:
+ *   light: foreground/background 16.1, muted-fg/card 6.9, link/card 7.6,
+ *          white on primary 6.0, highlight/card 6.7, destructive/card 6.5
+ *   dark : foreground/background 17.6, muted-fg/card 8.3, link/card 8.2,
+ *          white on primary 4.7, highlight/card 11.3, destructive/card 6.9
  */
 :root {
   color-scheme: light;
-  --background: #f5f6fb;
-  --background-2: #eceef8;
-  --foreground: #0a0b14;
-  --card: #ffffff;
-  --card-foreground: #0a0b14;
-  --muted: #eceef8;
-  --muted-foreground: #586079;
-  --border: #dde1f0;
-  --primary: #4255ff;
-  --primary-hover: #3446f0;
+  --background: #f3f8fd;
+  --background-2: #e4eef9;
+  --foreground: #0b1b33;
+  --card: #fffefb;
+  --card-foreground: #0b1b33;
+  --muted: #e7f0fa;
+  --muted-foreground: #475b78;
+  --border: #cfdeef;
+  --primary: #1d5fc4;
+  --primary-hover: #164ea5;
   --primary-foreground: #ffffff;
-  --link: #3446f0;
-  --accent: #ffcd1f;
-  --accent-foreground: #1a1500;
-  --highlight: #8a5a00;
-  --destructive: #c8213f;
+  --link: #1750a8;
+  --accent: #d9a82e;
+  --accent-foreground: #231a00;
+  --highlight: #7a5500;
+  --destructive: #b42318;
   --destructive-foreground: #ffffff;
-  --success: #12805c;
+  --success: #17704a;
   --success-foreground: #ffffff;
-  --ring: #4255ff;
-  --glow: radial-gradient(1200px 600px at 50% -15%, rgb(66 85 255 / 0.1), transparent 60%),
-    radial-gradient(800px 500px at 100% 100%, rgb(60 207 207 / 0.06), transparent 60%);
-  --shadow-card: 0 1px 2px rgb(18 20 39 / 0.05), 0 8px 24px -12px rgb(18 20 39 / 0.18);
-  --shadow-card-hover: 0 2px 4px rgb(18 20 39 / 0.06), 0 16px 32px -14px rgb(18 20 39 / 0.28);
+  --ring: #1d5fc4;
+  /* Sky wash with a couple of soft clouds. */
+  --glow: radial-gradient(900px 220px at 12% 4%, rgb(255 255 255 / 0.95), transparent 70%),
+    radial-gradient(700px 180px at 88% 12%, rgb(255 255 255 / 0.85), transparent 70%),
+    linear-gradient(180deg, #cfe3f8 0, #f3f8fd 460px);
+  --glow-size: auto;
+  --meander: rgb(29 95 196 / 0.35);
+  --shadow-card: 0 1px 2px rgb(11 27 51 / 0.05), 0 8px 24px -12px rgb(29 95 196 / 0.22);
+  --shadow-card-hover: 0 2px 4px rgb(11 27 51 / 0.06), 0 16px 32px -14px rgb(29 95 196 / 0.32);
 
-  /* 3D scene */
-  --scene-sky: #e6e9f7;
-  --scene-fog: #e6e9f7;
-  --scene-floor: #d6dbef;
-  --scene-wall: #f4f5fb;
-  --scene-door: #f0b400;
-  --scene-archway: #13a8a8;
-  --scene-locus: #4255ff;
-  --scene-locus-active: #ffb800;
-  --scene-path: #4255ff;
-  --scene-grid: #c3c9e4;
+  /* 3D scene: zenith/horizon gradient dome, marble floor + walls, gold doors. */
+  --scene-sky: #5a9fe6;
+  --scene-horizon: #d6e9fa;
+  --scene-fog: #d6e9fa;
+  --scene-floor: #e6e1d4;
+  --scene-wall: #f7f4ec;
+  --scene-door: #c9971c;
+  --scene-archway: #1b8fa6;
+  --scene-locus: #1d5fc4;
+  --scene-locus-active: #e0a100;
+  --scene-path: #1d5fc4;
+  --scene-grid: #c4d4e8;
 }
 
 .dark {
   color-scheme: dark;
-  --background: #0a0b14;
-  --background-2: #121427;
-  --foreground: #f5f6ff;
-  --card: #1a1d3a;
-  --card-foreground: #f5f6ff;
-  --muted: #252a52;
-  --muted-foreground: #a7abc7;
-  --border: #2c3163;
-  --primary: #4255ff;
-  --primary-hover: #5163ff;
+  --background: #060b1f;
+  --background-2: #0a1230;
+  --foreground: #eef3ff;
+  --card: #0f1a3d;
+  --card-foreground: #eef3ff;
+  --muted: #172552;
+  --muted-foreground: #a6b5db;
+  --border: #243468;
+  --primary: #2f6fe0;
+  --primary-hover: #1f5fd0;
   --primary-foreground: #ffffff;
-  --link: #8f9bff;
-  --accent: #ffcd1f;
-  --accent-foreground: #1a1500;
-  --highlight: #ffcd1f;
-  --destructive: #ff6b81;
-  --destructive-foreground: #0a0b14;
-  --success: #3ddc97;
-  --success-foreground: #0a0b14;
-  --ring: #8f9bff;
-  --glow: radial-gradient(1200px 600px at 50% -15%, rgb(66 85 255 / 0.18), transparent 60%),
-    radial-gradient(800px 500px at 100% 100%, rgb(60 207 207 / 0.06), transparent 60%);
+  --link: #8db4ff;
+  --accent: #f2cf72;
+  --accent-foreground: #1a1400;
+  --highlight: #f2cf72;
+  --destructive: #ff7b8c;
+  --destructive-foreground: #060b1f;
+  --success: #4be0a0;
+  --success-foreground: #060b1f;
+  --ring: #8db4ff;
+  /* Two offset star tiles (so the field doesn't read as a pattern) over a
+     night-sky wash that glows faintly blue at the top. */
+  --glow: radial-gradient(1px 1px at 20px 30px, rgb(255 255 255 / 0.9), transparent),
+    radial-gradient(1px 1px at 120px 80px, rgb(255 255 255 / 0.7), transparent),
+    radial-gradient(1.5px 1.5px at 210px 150px, rgb(255 255 255 / 0.95), transparent),
+    radial-gradient(1px 1px at 60px 190px, rgb(207 224 255 / 0.8), transparent),
+    radial-gradient(1px 1px at 270px 40px, rgb(255 244 214 / 0.8), transparent),
+    radial-gradient(1.5px 1.5px at 310px 220px, rgb(255 255 255 / 0.85), transparent),
+    radial-gradient(1px 1px at 90px 40px, rgb(255 255 255 / 0.8), transparent),
+    radial-gradient(1px 1px at 400px 300px, rgb(207 224 255 / 0.85), transparent),
+    radial-gradient(1.5px 1.5px at 180px 360px, rgb(255 255 255 / 0.9), transparent),
+    radial-gradient(1px 1px at 470px 120px, rgb(255 244 214 / 0.75), transparent),
+    radial-gradient(1px 1px at 140px 510px, rgb(255 255 255 / 0.8), transparent),
+    radial-gradient(1.5px 1.5px at 560px 400px, rgb(207 224 255 / 0.9), transparent),
+    radial-gradient(1px 1px at 690px 90px, rgb(255 255 255 / 0.75), transparent),
+    radial-gradient(1px 1px at 330px 570px, rgb(255 244 214 / 0.8), transparent),
+    radial-gradient(1200px 600px at 50% -15%, rgb(47 111 224 / 0.22), transparent 60%),
+    linear-gradient(180deg, #0a1234 0, #060b1f 520px);
+  --glow-size: 337px 263px, 337px 263px, 337px 263px, 337px 263px, 337px 263px, 337px 263px,
+    521px 439px, 521px 439px, 521px 439px, 521px 439px, 811px 617px, 811px 617px, 811px 617px,
+    811px 617px, auto, auto;
+  --meander: rgb(242 207 114 / 0.4);
   --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px -12px rgb(0 0 0 / 0.6);
-  --shadow-card-hover: 0 2px 4px rgb(0 0 0 / 0.45), 0 16px 32px -14px rgb(66 85 255 / 0.35);
+  --shadow-card-hover: 0 2px 4px rgb(0 0 0 / 0.45), 0 16px 32px -14px rgb(47 111 224 / 0.4);
 
-  --scene-sky: #0a0b14;
-  --scene-fog: #0a0b14;
-  --scene-floor: #262b57;
-  --scene-wall: #4a52a3;
-  --scene-door: #ffcd1f;
-  --scene-archway: #3ccfcf;
-  --scene-locus: #5a6bff;
-  --scene-locus-active: #ffcd1f;
-  --scene-path: #8f9bff;
-  --scene-grid: #232858;
+  /* Moonlit stone under a starry dome. */
+  --scene-sky: #02050f;
+  --scene-horizon: #101b45;
+  --scene-fog: #101b45;
+  --scene-floor: #1d2754;
+  --scene-wall: #4a5896;
+  --scene-door: #f2cf72;
+  --scene-archway: #5fd0d6;
+  --scene-locus: #6aa0ff;
+  --scene-locus-active: #f2cf72;
+  --scene-path: #8db4ff;
+  --scene-grid: #1d2754;
 }
 
 @theme inline {
@@ -116,7 +142,7 @@
   --color-ring: var(--ring);
   --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", monospace;
-  --font-display: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-serif), "Cormorant Garamond", Georgia, serif;
   --shadow-card: var(--shadow-card);
   --shadow-card-hover: var(--shadow-card-hover);
   --radius-card: 1rem;
@@ -125,18 +151,28 @@
 body {
   background-color: var(--background);
   background-image: var(--glow);
+  background-size: var(--glow-size, auto);
   background-attachment: fixed;
   color: var(--foreground);
   font-family: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
   transition: background-color 0.2s ease, color 0.2s ease;
 }
 
+/* Classical serif headings; font-size-adjust keeps Cormorant's small x-height
+   at the same visual size as the sans body. */
 h1,
 h2,
 h3 {
-  font-family: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--font-serif), "Cormorant Garamond", Georgia, serif;
   font-weight: 700;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
+  font-size-adjust: 0.5;
+  font-variant-numeric: lining-nums;
+}
+
+/* Cormorant defaults to old-style figures; stats and scores read better lining. */
+.font-display {
+  font-variant-numeric: lining-nums;
 }
 
 ::selection {
@@ -170,4 +206,33 @@ h3 {
 
 @utility card-base {
   @apply rounded-2xl border border-border bg-card text-card-foreground shadow-card transition-shadow;
+}
+
+/* Greek key (meander) rule: a thin decorative band, coloured by --meander. */
+@utility meander-rule {
+  height: 8px;
+  background: var(--meander);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M0 7.5H2V1H10V5.5H5V3.2H7.5M10 5.5V7.5H12' fill='none' stroke='black' stroke-width='1'/%3E%3C/svg%3E") repeat-x center / 12px 8px;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M0 7.5H2V1H10V5.5H5V3.2H7.5M10 5.5V7.5H12' fill='none' stroke='black' stroke-width='1'/%3E%3C/svg%3E") repeat-x center / 12px 8px;
+}
+
+/* Onboarding spotlight: ringed by the guided tour overlay. */
+@keyframes tour-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 8px color-mix(in srgb, var(--accent) 0%, transparent);
+  }
+}
+[data-tour-active] {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  animation: tour-pulse 1.6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-tour-active] {
+    animation: none;
+  }
 }

@@ -22,6 +22,7 @@ const ratio = (a: string, b: string) => {
 const PAIRS: Array<[string, string]> = [
   ["foreground", "background"],
   ["foreground", "card"],
+  ["card-foreground", "card"],
   ["foreground", "muted"],
   ["muted-foreground", "background"],
   ["muted-foreground", "card"],
@@ -55,4 +56,27 @@ describe("theme tokens meet WCAG AA", () => {
       }
     });
   }
+});
+
+describe("scene tokens", () => {
+  const light = tokens(":root");
+  const dark = { ...light, ...tokens(".dark") };
+  const REQUIRED = ["sky", "horizon", "fog", "floor", "wall", "door", "archway", "locus", "locus-active", "path", "grid"];
+  for (const [name, t] of [
+    ["light", light],
+    ["dark", dark],
+  ] as const) {
+    it(`${name} defines every --scene-* token`, () => {
+      for (const k of REQUIRED) expect(t[`scene-${k}`], `${name} --scene-${k}`).toBeDefined();
+    });
+  }
+  it("night sky is darker than day sky and walls stay distinct from floors", () => {
+    expect(lum(dark["scene-sky"])).toBeLessThan(lum(light["scene-sky"]));
+    expect(ratio(light["scene-wall"], light["scene-floor"])).toBeGreaterThan(1.05);
+    expect(ratio(dark["scene-wall"], dark["scene-floor"])).toBeGreaterThan(1.3);
+  });
+  it("markers read against the floor in both themes", () => {
+    expect(ratio(light["scene-locus"], light["scene-floor"])).toBeGreaterThanOrEqual(3);
+    expect(ratio(dark["scene-locus"], dark["scene-floor"])).toBeGreaterThanOrEqual(3);
+  });
 });

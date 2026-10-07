@@ -3,33 +3,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useFetch } from "@/hooks/useFetch";
+import Markdown from "@/components/Markdown";
 import { sortPlayQueue } from "@/lib/srs";
-import type { Card, CardReview } from "@/types/database";
+import { ANCHOR_NUDGE } from "@/lib/deckLink";
+import type { ReviewPayload, SessionAnswer } from "@/lib/reviewTypes";
 import { cardBack, cardFront } from "@/types/database";
 
 type Mode = "due" | "walk";
-
-interface ReviewItem {
-  id: string;
-  card: Card;
-  locusId: string;
-  locusLabel: string;
-  roomId: string;
-  roomTitle: string;
-  roomOrder: number;
-  position: number;
-  review: CardReview | null;
-  dueAt: number | null;
-}
-
-interface ReviewPayload {
-  scope: "room" | "palace";
-  title: string;
-  now: number;
-  due: number;
-  total: number;
-  items: ReviewItem[];
-}
 
 export default function StudySession({
   endpoint,
@@ -40,7 +20,7 @@ export default function StudySession({
   endpoint: string;
   backHref: string;
   backLabel: string;
-  sessionMeta: { room_id?: string; palace_id?: string };
+  sessionMeta: { room_id?: string; palace_id?: string; deck_id?: string };
 }) {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("due");
@@ -49,6 +29,7 @@ export default function StudySession({
   const [score, setScore] = useState(0);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [answers, setAnswers] = useState<SessionAnswer[]>([]);
 
   const { data, loading, error } = useFetch<ReviewPayload>(endpoint);
 
@@ -65,6 +46,7 @@ export default function StudySession({
     setIndex(0);
     setShowAnswer(false);
     setScore(0);
+    setAnswers([]);
     setSaveError(null);
   }
 
@@ -78,7 +60,8 @@ export default function StudySession({
       const res = await fetch("/api/reviews", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ card_id: card.id, correct }),
+        // Deck items grade by flashcard (server resolves the linked card).
+        body: JSON.stringify(card.flashcardId ? { flashcard_id: card.flashcardId, correct } : { card_id: card.id, correct }),
       });
       if (!res.ok) {
         setSaveError("Failed to save your review. Try again.");
@@ -92,18 +75,42 @@ export default function StudySession({
     }
     setSaveError(null);
     setScore(nextScore);
+    const nextAnswers: SessionAnswer[] = [
+      ...answers,
+      {
+        id: card.id,
+        kind: card.flashcardId ? "flashcard" : "card",
+        cardId: card.flashcardId ? (card.linked ? card.card.id : null) : card.id,
+        correct,
+        roomId: card.roomId,
+        roomTitle: card.roomTitle,
+        locusId: card.locusId,
+        locusLabel: card.locusLabel,
+        label: cardFront(card.card).slice(0, 200),
+      },
+    ];
+    setAnswers(nextAnswers);
 
     if (isLast) {
+      let sessionId = "";
       try {
-        await fetch("/api/study-sessions", {
+        const res = await fetch("/api/study-sessions", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...sessionMeta, score: nextScore, total: data.total }),
+          body: JSON.stringify({ ...sessionMeta, score: nextScore, total: data.total, answers: nextAnswers }),
         });
+        if (res.ok) sessionId = (await res.json()).id ?? "";
       } catch {
         // Summary is informational; don't block navigation on it.
       }
-      router.push(`/results?score=${nextScore}&total=${data.total}`);
+      const q = new URLSearchParams({
+        score: String(nextScore),
+        total: String(data.total),
+        back: backHref,
+        backLabel,
+      });
+      if (sessionId) q.set("session", sessionId);
+      router.push(`/results?${q.toString()}`);
     } else {
       setIndex(index + 1);
       setShowAnswer(false);
@@ -111,7 +118,7 @@ export default function StudySession({
     setSaving(false);
   }
 
-  // Keyboard: Space/Enter shows the answer, 1 = right, 2 = wrong.
+  // Keyboard: Space/Enter shows the answer, 1 = left button (wrong), 2 = right button (right).
   const keyRef = useRef<(e: KeyboardEvent) => void>(() => {});
   useEffect(() => {
     keyRef.current = (e: KeyboardEvent) => {
@@ -121,7 +128,7 @@ export default function StudySession({
         e.preventDefault();
         setShowAnswer(true);
       } else if (showAnswer && (e.key === "1" || e.key === "2")) {
-        void handleAnswer(e.key === "1");
+        void handleAnswer(e.key === "2");
       }
     };
   });
@@ -147,7 +154,9 @@ export default function StudySession({
     return (
       <div className="mx-auto max-w-lg p-6 text-center">
         <p className="mb-2 text-sm text-muted-foreground">{data.title}</p>
-        <p className="text-lg">No cards here yet. Add loci and cards first.</p>
+        <p className="text-lg">
+          {data.scope === "deck" ? "This deck has no flashcards yet." : "No cards here yet. Add loci and cards first."}
+        </p>
         <Link href={backHref} className="btn-primary mt-4">
           {"\u2190 "}{backLabel}
         </Link>
@@ -213,16 +222,30 @@ export default function StudySession({
       </div>
 
       <p className="mb-3 text-center text-xs text-muted-foreground">
-        {card.locusLabel || "Unlabelled locus"}
-        {data.scope === "palace" && card.roomTitle ? ` \u00b7 ${card.roomTitle}` : ""}
+        {data.scope === "deck" && !card.linked
+          ? "Deck card"
+          : card.locusLabel || "Unlabelled locus"}
+        {data.scope !== "room" && card.roomTitle ? ` \u00b7 ${card.roomTitle}` : ""}
       </p>
+      {data.scope === "deck" && !card.linked && data.deckId && (
+        <p className="mb-3 rounded-lg border border-accent/40 bg-accent/10 px-3 py-2 text-center text-xs text-highlight">
+          {ANCHOR_NUDGE}{" "}
+          <Link href={`/decks/${data.deckId}?port=1`} className="font-medium underline">
+            Port to palace
+          </Link>
+        </p>
+      )}
 
       <div className="card-base relative overflow-hidden p-10 text-center">
         <div className="absolute inset-x-0 top-0 h-1.5 bg-linear-to-r from-primary via-accent to-primary" />
         <div className="flex min-h-40 items-center justify-center">
-          <p className="text-xl font-medium leading-relaxed">
-            {showAnswer ? cardBack(card.card) : cardFront(card.card)}
-          </p>
+          <div className="text-xl font-medium leading-relaxed">
+            {data.scope === "deck" ? (
+              <Markdown text={showAnswer ? cardBack(card.card) : cardFront(card.card)} />
+            ) : (
+              <p>{showAnswer ? cardBack(card.card) : cardFront(card.card)}</p>
+            )}
+          </div>
         </div>
       </div>
 
@@ -240,14 +263,14 @@ export default function StudySession({
               disabled={saving}
               className="rounded-xl bg-destructive px-5 py-2 text-sm font-semibold text-destructive-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
             >
-              Got it wrong
+              Got it wrong <kbd className="ml-1 opacity-70">1</kbd>
             </button>
             <button
               onClick={() => handleAnswer(true)}
               disabled={saving}
               className="rounded-xl bg-success px-5 py-2 text-sm font-semibold text-success-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
             >
-              Got it right
+              Got it right <kbd className="ml-1 opacity-70">2</kbd>
             </button>
           </div>
         )}

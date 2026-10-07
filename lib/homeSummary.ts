@@ -33,6 +33,20 @@ export interface SummarySession {
   results: { score?: number; total?: number; [key: string]: unknown };
 }
 
+export interface SummaryFlashcard {
+  deck_id: string;
+  source_card_id: string | null;
+}
+
+export interface DeckCounts {
+  decks: number;
+  flashcards: number;
+  /** Flashcards with no live-linked palace card (no SRS schedule yet). */
+  unanchored: number;
+  /** Deck with the most unanchored flashcards (deep link target for "Port them"); null when none. */
+  portDeckId: string | null;
+}
+
 export interface PalaceCounts {
   palaceId: string;
   title: string;
@@ -54,11 +68,21 @@ export interface HomeSummary {
   now: number;
   dueToday: number;
   totalCards: number;
+  totalLoci: number;
   palaces: PalaceCounts[];
   continueTarget: ContinueTarget | null;
   streakDays: number;
   /** 0..1, null when no scored sessions yet. */
   avgScore: number | null;
+  decks: DeckCounts;
+  /** Guided-onboarding state (route-level; not part of the pure rollups). */
+  onboarding?: {
+    onboardedAt: string | null;
+    step: number | null;
+    /** A room to deep-link the tour into (the one with the most loci). */
+    firstRoomId: string | null;
+    hasSession: boolean;
+  };
 }
 
 export function rollupPalaces(
@@ -111,25 +135,47 @@ export function pickContinue(palaces: PalaceCounts[]): ContinueTarget | null {
 
 const DAY_MS = 86_400_000;
 
-function dayKey(ms: number): string {
-  return new Date(ms).toISOString().slice(0, 10);
+// Day boundaries follow the learner's local time: tzOffsetMin is
+// Date#getTimezoneOffset() (minutes UTC is ahead of local; 0 = UTC).
+function dayKey(ms: number, tzOffsetMin: number): string {
+  return new Date(ms - tzOffsetMin * 60_000).toISOString().slice(0, 10);
 }
 
-/** Consecutive-day streak ending today (or yesterday if today is quiet). */
-export function streakDays(sessionDates: string[], nowMs: number): number {
-  const days = new Set(sessionDates.map((d) => dayKey(Date.parse(d))));
-  let cursor = dayKey(nowMs);
+/** Consecutive local-day streak ending today (or yesterday if today is quiet). */
+export function streakDays(sessionDates: string[], nowMs: number, tzOffsetMin = 0): number {
+  const days = new Set(sessionDates.map((d) => dayKey(Date.parse(d), tzOffsetMin)));
+  let cursor = dayKey(nowMs, tzOffsetMin);
   if (!days.has(cursor)) {
-    cursor = dayKey(nowMs - DAY_MS);
+    cursor = dayKey(nowMs - DAY_MS, tzOffsetMin);
     if (!days.has(cursor)) return 0;
   }
   let streak = 0;
-  let ms = Date.parse(cursor + "T00:00:00.000Z");
-  while (days.has(dayKey(ms))) {
+  // Walk back one day at a time from the cursor's local midday (DST-safe).
+  let ms = Date.parse(cursor + "T12:00:00.000Z") + tzOffsetMin * 60_000;
+  while (days.has(dayKey(ms, tzOffsetMin))) {
     streak += 1;
     ms -= DAY_MS;
   }
   return streak;
+}
+
+export function rollupDecks(deckCount: number, flashcards: SummaryFlashcard[]): DeckCounts {
+  const loose = new Map<string, number>();
+  for (const f of flashcards) if (!f.source_card_id) loose.set(f.deck_id, (loose.get(f.deck_id) ?? 0) + 1);
+  let portDeckId: string | null = null;
+  let most = 0;
+  for (const [deckId, n] of loose) {
+    if (n > most) {
+      most = n;
+      portDeckId = deckId;
+    }
+  }
+  return {
+    decks: deckCount,
+    flashcards: flashcards.length,
+    unanchored: flashcards.filter((f) => !f.source_card_id).length,
+    portDeckId,
+  };
 }
 
 /** Score-weighted average over sessions that recorded a total. */
@@ -154,18 +200,24 @@ export function buildHomeSummary(input: {
   reviews: SummaryReview[];
   sessions: SummarySession[];
   now: number;
+  tzOffsetMin?: number;
+  deckCount?: number;
+  flashcards?: SummaryFlashcard[];
 }): HomeSummary {
   const palaces = rollupPalaces(input.palaces, input.rooms, input.loci, input.cards, input.reviews, input.now);
   return {
     now: input.now,
     dueToday: palaces.reduce((n, p) => n + p.due, 0),
     totalCards: palaces.reduce((n, p) => n + p.cards, 0),
+    totalLoci: input.loci.length,
     palaces,
     continueTarget: pickContinue(palaces),
     streakDays: streakDays(
       input.sessions.map((s) => s.created_at),
-      input.now
+      input.now,
+      input.tzOffsetMin ?? 0
     ),
     avgScore: averageScore(input.sessions),
+    decks: rollupDecks(input.deckCount ?? 0, input.flashcards ?? []),
   };
 }

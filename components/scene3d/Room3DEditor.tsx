@@ -5,11 +5,16 @@ import { OrbitControls } from "@react-three/drei";
 import type { Card, Locus, Opening, Room, WallFace } from "@/types/database";
 import { cardBack, cardFront } from "@/types/database";
 import { wallLength } from "@/lib/geometry";
-import { anchorFromPoint, reorderPositions, toScene, tourOrder, type WallAnchor } from "@/lib/scene3d";
+import { anchorFromPoint, anchorInOpening, distributeOnWall, reorderPositions, toScene, tourOrder, type WallAnchor } from "@/lib/scene3d";
 import { LocusMarkers, RoomShell, SceneLights, type WallPointerEvent } from "./RoomShell";
 import { SceneGate } from "./SceneBoundary";
 import { useSceneColors } from "./useSceneColors";
+import { SceneSky } from "./SceneSky";
 import type { LociActions } from "./actions";
+import ImportFromDeck from "@/components/decks/ImportFromDeck";
+import SendToDeck from "@/components/decks/SendToDeck";
+import MiniMap from "./MiniMap";
+import type { Blueprint } from "@/lib/blueprint";
 
 const WALL_NAMES: Record<WallFace, string> = { north: "North", south: "South", east: "East", west: "West" };
 
@@ -39,6 +44,10 @@ export default function Room3DEditor({
   openings,
   cards,
   actions,
+  onDeckChanged,
+  initialTool,
+  levelPlan = null,
+  onGoRoom,
   className = "",
   height = 520,
 }: {
@@ -47,11 +56,51 @@ export default function Room3DEditor({
   openings: Opening[];
   cards: Card[];
   actions: LociActions;
+  /** Called after a deck import / link change so the page can refetch cards. */
+  onDeckChanged?: () => void;
+  /** Deep links (/rooms/[id]?tool=place) open straight into place mode. */
+  initialTool?: Tool;
+  /** Whole-level plan for the sidebar map (click a locus to select it, a room to open it). */
+  levelPlan?: Blueprint | null;
+  onGoRoom?: (roomId: string) => void;
   className?: string;
   height?: number;
 }) {
   const colors = useSceneColors();
-  const [tool, setTool] = useState<Tool>(loci.length === 0 ? "place" : "select");
+  const [tool, setTool] = useState<Tool>(initialTool ?? (loci.length === 0 ? "place" : "select"));
+  // A bulk change (e.g. a deck import adding many loci at once) leaves place
+  // mode, so the next stray wall click doesn't add yet another locus.
+  const [prevLociCount, setPrevLociCount] = useState(loci.length);
+  if (loci.length !== prevLociCount) {
+    setPrevLociCount(loci.length);
+    if (loci.length - prevLociCount > 1 && tool === "place") setTool("select");
+  }
+  /** Transient message ("that's a doorway") and the one-step undo snackbar. */
+  const [notice, setNotice] = useState<string | null>(null);
+  const [lastAction, setLastAction] = useState<{ message: string; undo: () => Promise<void> } | null>(null);
+  const lastActionRef = useRef(lastAction);
+  useEffect(() => {
+    lastActionRef.current = lastAction;
+  }, [lastAction]);
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const actionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flash = useCallback((msg: string) => {
+    setNotice(msg);
+    if (noticeTimer.current) clearTimeout(noticeTimer.current);
+    noticeTimer.current = setTimeout(() => setNotice(null), 4500);
+  }, []);
+  const offerUndo = useCallback((message: string, undo: () => Promise<void>) => {
+    setLastAction({ message, undo });
+    if (actionTimer.current) clearTimeout(actionTimer.current);
+    actionTimer.current = setTimeout(() => setLastAction(null), 12000);
+  }, []);
+  useEffect(
+    () => () => {
+      if (noticeTimer.current) clearTimeout(noticeTimer.current);
+      if (actionTimer.current) clearTimeout(actionTimer.current);
+    },
+    []
+  );
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -139,16 +188,28 @@ export default function Room3DEditor({
       return;
     }
     const a = anchorOf(e);
+    if (anchorInOpening(a, room, openings)) {
+      flash("That's a doorway. Click a solid stretch of wall instead.");
+      return;
+    }
     const position = loci.reduce((m, l) => Math.max(m, l.position), -1) + 1;
     const leftover = quick;
     void run(async () => {
-      // Placing the next locus keeps whatever was typed for the previous one.
+      // Placing the next locus keeps whatever was typed for the previous one,
+      // and says so (it used to attach silently).
       if (leftover && leftover.front.trim()) {
-        await actions.createCard({ locus_id: leftover.locusId, front: leftover.front.trim(), back: leftover.back.trim() });
+        await actions.createCard({
+          locus_id: leftover.locusId,
+          front: leftover.front.trim(),
+          back: leftover.back.trim(),
+          options: splitOptions(leftover.options),
+        });
+        const n = ordered.findIndex((l) => l.id === leftover.locusId) + 1;
+        flash(n > 0 ? `Saved your unsent card on locus ${n}.` : "Saved your unsent card on the previous locus.");
       }
       const created = await actions.createLocus({
         room_id: room.id,
-        label: `Locus ${loci.length + 1}`,
+        label: `Locus ${position + 1}`,
         wall: a.wall,
         wall_offset: a.wall_offset,
         height: a.height,
@@ -156,7 +217,12 @@ export default function Room3DEditor({
       });
       setSelectedId(created.id);
       // Stay in place mode and open the inline card form straight away.
-      setQuick({ locusId: created.id, label: created.label, front: "", back: "" });
+      setQuick({ locusId: created.id, label: created.label, front: "", back: "", options: "" });
+      offerUndo(`Placed locus ${loci.length + 1}`, async () => {
+        await actions.deleteLocus(created.id);
+        setSelectedId((cur) => (cur === created.id ? null : cur));
+        setQuick((q) => (q?.locusId === created.id ? null : q));
+      });
     });
   }
 
@@ -164,9 +230,15 @@ export default function Room3DEditor({
     const a = anchorOf(e);
     if (dragging) {
       e.event.stopPropagation();
-      setDragging({ id: dragging.id, anchor: a });
+      // Plain drag slides along the wall at the marker's own height; hold
+      // Shift to move it up and down as well (stops vertical wobble).
+      const base = loci.find((l) => l.id === dragging.id);
+      const shift = !!(e.event.nativeEvent as MouseEvent).shiftKey;
+      const next = shift || !base ? a : { ...a, height: base.height ?? a.height };
+      if (anchorInOpening(next, room, openings)) return; // keep the last valid spot
+      setDragging({ id: dragging.id, anchor: next });
     } else if (tool === "place") {
-      setHover(a);
+      setHover(anchorInOpening(a, room, openings) ? null : a);
     }
   }
 
@@ -186,21 +258,42 @@ export default function Room3DEditor({
       const d = dragging;
       setDragging(null);
       const locus = loci.find((l) => l.id === d?.id);
-      if (d?.anchor && locus) commit(locus, d.anchor);
+      if (d?.anchor && locus) {
+        const before = { wall: locus.wall ?? "north", wall_offset: locus.wall_offset ?? 0.5, height: locus.height ?? 1.5 };
+        commit(locus, d.anchor);
+        offerUndo(`Moved ${locus.label || "locus"}`, () => actions.updateLocus(locus.id, before));
+      }
     };
     window.addEventListener("pointerup", up);
     return () => {
       window.removeEventListener("pointerup", up);
       document.body.style.userSelect = prevSelect;
     };
-  }, [dragging, loci, commit]);
+  }, [dragging, loci, commit, actions, offerUndo]);
 
   // Keyboard nudges on the selected locus (←/→ along wall, ↑/↓ height).
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (!selected) return;
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+      const plain = !e.ctrlKey && !e.metaKey && !e.altKey;
+      // Ctrl/Cmd+Z undoes the last placement or move.
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && lastActionRef.current) {
+        e.preventDefault();
+        const a = lastActionRef.current;
+        setLastAction(null);
+        void run(a.undo);
+        return;
+      }
+      // Tool keys: P = place loci, V = select / drag, Esc leaves place mode.
+      if (plain && (e.key === "p" || e.key === "P")) return setTool("place");
+      if (plain && (e.key === "v" || e.key === "V")) return setTool("select");
+      if (e.key === "Escape") {
+        if (tool === "place") setTool("select");
+        setSelectedId(null);
+        return;
+      }
+      if (!selected) return;
       const wall = selected.wall ?? "north";
       const len = wallLength(wall, room);
       const step = e.shiftKey ? 0.5 : 0.1;
@@ -211,7 +304,6 @@ export default function Room3DEditor({
       if (e.key === "ArrowRight") patch = { wall_offset: Math.max(0, Math.min(1, off + step / len)) };
       if (e.key === "ArrowUp") patch = { height: Math.min(room.height - 0.2, +(h + step / 2).toFixed(2)) };
       if (e.key === "ArrowDown") patch = { height: Math.max(0.3, +(h - step / 2).toFixed(2)) };
-      if (e.key === "Escape") setSelectedId(null);
       if (patch) {
         e.preventDefault();
         commitSoon(selected, patch);
@@ -219,7 +311,7 @@ export default function Room3DEditor({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selected, room, commitSoon]);
+  }, [selected, room, commitSoon, tool, run]);
 
   function move(id: string, dir: -1 | 1) {
     const updates = reorderPositions(loci, id, dir);
@@ -233,6 +325,23 @@ export default function Room3DEditor({
       .map((c, i) => ({ ...c, position: typeof c.position === "number" ? c.position : 1000 + i }));
     const updates = reorderPositions(list, id, dir);
     if (updates.length) void run(() => Promise.all(updates.map((u) => actions.updateCard(u.id, { position: u.position }))));
+  }
+
+  // Live "where am I" readout while hovering in place mode or dragging a marker.
+  const readout = dragging?.anchor ?? (tool === "place" && !dragging ? hover : null);
+  const selectedWall = selected?.wall ?? "north";
+  const wallLoci = selected ? ordered.filter((l) => (l.wall ?? "north") === selectedWall) : [];
+
+  function spreadEvenly() {
+    const updates = distributeOnWall(wallLoci, selectedWall, room, openings);
+    if (updates.length === 0) return flash("Those loci are already evenly spaced.");
+    const before = updates.map((u) => ({ id: u.id, wall_offset: loci.find((l) => l.id === u.id)?.wall_offset ?? 0.5 }));
+    void run(async () => {
+      await Promise.all(updates.map((u) => actions.updateLocus(u.id, { wall_offset: u.wall_offset })));
+      offerUndo(`Spread ${wallLoci.length} loci evenly`, async () => {
+        await Promise.all(before.map((b) => actions.updateLocus(b.id, { wall_offset: b.wall_offset })));
+      });
+    });
   }
 
   const camDist = Math.max(room.width, room.depth) * 1.15 + 3;
@@ -251,8 +360,9 @@ export default function Room3DEditor({
           onPointerLeave={() => setHover(null)}
           style={{ cursor: dragging ? "grabbing" : tool === "place" ? "crosshair" : "default", touchAction: "none" }}
         >
-          <color attach="background" args={[colors.sky]} />
+          <color attach="background" args={[colors.horizon]} />
           <fog attach="fog" args={[colors.fog, camDist * 1.5, camDist * 4]} />
+          <SceneSky colors={colors} radius={400} />
           <SceneLights colors={colors} />
           <RoomShell room={room} openings={openings} colors={colors} cutaway onWallClick={onWallClick} onWallMove={onWallMove} />
           <LocusMarkers
@@ -289,16 +399,54 @@ export default function Room3DEditor({
                 aria-pressed={tool === t}
                 className={`rounded-lg px-3 py-1.5 font-medium transition ${tool === t ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
               >
-                {t === "select" ? "Select / drag" : "+ Locus & cards"}
+                {t === "select" ? "Select / drag (V)" : "+ Locus & cards (P)"}
               </button>
             ))}
           </div>
-          <p className="pointer-events-none rounded-lg bg-card/80 px-2 py-1 text-xs text-muted-foreground backdrop-blur">
-            {tool === "place"
-              ? "Click a wall to drop a locus, then type its cards. Drag to orbit."
-              : "Drag a marker along the walls · ←/→ slide · ↑/↓ height · drag empty space to orbit"}
-          </p>
+          {tool === "place" ? (
+            <div className="pointer-events-auto flex items-center gap-2 rounded-lg bg-accent/90 px-2.5 py-1 text-xs font-medium text-accent-foreground shadow-sm">
+              Placing · click a wall
+              <button type="button" onClick={() => setTool("select")} className="rounded bg-card/80 px-1.5 py-0.5 text-foreground hover:bg-card">
+                Done (Esc)
+              </button>
+            </div>
+          ) : (
+            <p className="pointer-events-none rounded-lg bg-card/80 px-2 py-1 text-xs text-muted-foreground backdrop-blur">
+              Drag a marker along the walls (Shift = also up/down) · ←/→ slide · ↑/↓ height · Ctrl+Z undo
+            </p>
+          )}
         </div>
+        {readout && (
+          <div className="pointer-events-none absolute right-3 top-14 rounded-lg bg-card/90 px-2.5 py-1 text-xs tabular-nums text-foreground shadow-sm backdrop-blur">
+            {WALL_NAMES[readout.wall]} wall · {(readout.wall_offset * wallLength(readout.wall, room)).toFixed(1)} m along ·{" "}
+            {readout.height.toFixed(2)} m high
+          </div>
+        )}
+        {(notice || lastAction) && (
+          <div className="pointer-events-none absolute inset-x-0 top-24 z-10 flex flex-col items-center gap-2 px-3">
+            {notice && (
+              <p role="status" className="rounded-lg border border-accent/50 bg-card/95 px-3 py-1.5 text-sm shadow-lg">
+                {notice}
+              </p>
+            )}
+            {lastAction && (
+              <p className="pointer-events-auto flex items-center gap-3 rounded-lg border border-border bg-card/95 px-3 py-1.5 text-sm shadow-lg">
+                {lastAction.message}
+                <button
+                  type="button"
+                  className="font-semibold text-link hover:underline"
+                  onClick={() => {
+                    const a = lastAction;
+                    setLastAction(null);
+                    void run(a.undo);
+                  }}
+                >
+                  Undo
+                </button>
+              </p>
+            )}
+          </div>
+        )}
         {quick && loci.some((l) => l.id === quick.locusId) && (
           <QuickCardForm
             key={quick.locusId}
@@ -310,7 +458,9 @@ export default function Room3DEditor({
               const l = loci.find((x) => x.id === quick.locusId);
               if (l && label.trim() && label !== l.label) commit(l, { label: label.trim() });
             }}
-            onSave={(front, back) => run(() => actions.createCard({ locus_id: quick.locusId, front, back }))}
+            onSave={(front, back, options) =>
+              run(() => actions.createCard({ locus_id: quick.locusId, front, back, options: splitOptions(options) }))
+            }
             onClose={() => setQuick(null)}
           />
         )}
@@ -323,10 +473,23 @@ export default function Room3DEditor({
             {error}
           </p>
         )}
+        {levelPlan && (
+          <MiniMap
+            plan={levelPlan}
+            currentRoomId={room.id}
+            activeLocusN={selectedIndex >= 0 ? selectedIndex + 1 : null}
+            onGoLocus={(n) => setSelectedId(ordered[n - 1]?.id ?? null)}
+            onGoRoom={onGoRoom}
+            className="self-start"
+          />
+        )}
         <section>
           <h3 className="mb-2 text-sm font-semibold">Study path ({ordered.length})</h3>
           {ordered.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No loci yet. Pick “+ Place locus” and click a wall.</p>
+            <p className="text-sm text-muted-foreground">
+              No loci yet. Press <kbd className="rounded bg-muted px-1">P</kbd> (or “+ Locus &amp; cards”) and click a wall — or use
+              “Import deck” above to turn a whole deck into loci, one per card.
+            </p>
           ) : (
             <ol className="space-y-1">
               {ordered.map((l, i) => (
@@ -351,6 +514,11 @@ export default function Room3DEditor({
               ))}
             </ol>
           )}
+          {selected && wallLoci.length > 1 && (
+            <button type="button" onClick={spreadEvenly} disabled={busy} className="btn-outline mt-3 w-full !py-1.5 text-xs">
+              Spread {wallLoci.length} loci evenly on the {selectedWall} wall
+            </button>
+          )}
         </section>
 
         {selected && (
@@ -362,16 +530,23 @@ export default function Room3DEditor({
             cards={selectedCards}
             busy={busy}
             onPatch={(patch, immediate) => (immediate ? commit(selected, patch) : commitSoon(selected, patch))}
-            onDelete={() =>
-              run(async () => {
+            onDelete={() => {
+              const n = selectedCards.length;
+              const msg = `Delete "${selected.label || "this locus"}"${n > 0 ? ` and its ${n} card${n === 1 ? "" : "s"}` : ""}? This can't be undone.`;
+              if (!window.confirm(msg)) return;
+              void run(async () => {
                 await actions.deleteLocus(selected.id);
                 setSelectedId(null);
-              })
-            }
+              });
+            }}
             onCreateCard={(front, back, options) => run(() => actions.createCard({ locus_id: selected.id, front, back, options }))}
             onUpdateCard={(id, front, back, options) => run(() => actions.updateCard(id, { front, back, options }))}
             onMoveCard={(id, dir) => moveCard(selected.id, id, dir)}
-            onDeleteCard={(id) => run(() => actions.deleteCard(id))}
+            onDeleteCard={async (id) => {
+              if (!window.confirm("Delete this card? This can't be undone.")) return;
+              await run(() => actions.deleteCard(id));
+            }}
+            onDeckChanged={onDeckChanged}
           />
         )}
       </aside>
@@ -391,6 +566,7 @@ function LocusDetails({
   onUpdateCard,
   onMoveCard,
   onDeleteCard,
+  onDeckChanged,
 }: {
   room: Room;
   locus: Locus;
@@ -403,7 +579,10 @@ function LocusDetails({
   onUpdateCard: (id: string, front: string, back: string, options?: string[]) => Promise<void>;
   onMoveCard: (id: string, dir: -1 | 1) => void;
   onDeleteCard: (id: string) => Promise<void>;
+  onDeckChanged?: () => void;
 }) {
+  const [deckPanel, setDeckPanel] = useState<"import" | "send" | null>(null);
+  const [linkMsg, setLinkMsg] = useState<string | null>(null);
   const [label, setLabel] = useState(locus.label);
   const [front, setFront] = useState("");
   const [back, setBack] = useState("");
@@ -411,6 +590,21 @@ function LocusDetails({
   const [editing, setEditing] = useState<{ id: string; front: string; back: string; options: string } | null>(null);
   const wall = locus.wall ?? "north";
   const len = wallLength(wall, room);
+
+  async function unlinkCard(cardId: string) {
+    const res = await fetch(`/api/links?card_id=${cardId}`, { method: "DELETE" });
+    setLinkMsg(res.ok ? "Unlinked." : "Unlink failed.");
+    if (res.ok) onDeckChanged?.();
+  }
+  async function pushCard(card: Card) {
+    if (!card.source_flashcard_id) return;
+    const res = await fetch("/api/links", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ flashcard_id: card.source_flashcard_id, card_id: card.id, direction: "to-flashcard" }),
+    });
+    setLinkMsg(res.ok ? "Pushed to the deck card." : ((await res.json().catch(() => ({}))).error ?? "Push failed."));
+  }
 
   return (
     <section className="space-y-3 border-t border-border pt-3">
@@ -493,6 +687,17 @@ function LocusDetails({
                   Delete
                 </button>
               </div>
+              {c.source_flashcard_id && (
+                <div className="mt-1 flex flex-wrap items-center gap-3 text-xs">
+                  <span className="rounded-full border border-success/50 px-2 py-0.5 text-success">↔ Linked to deck</span>
+                  <button type="button" className="hover:underline" onClick={() => pushCard(c)}>
+                    Push to deck
+                  </button>
+                  <button type="button" className="hover:underline" onClick={() => unlinkCard(c.id)}>
+                    Unlink
+                  </button>
+                </div>
+              )}
             </div>
           )
         )}
@@ -516,6 +721,33 @@ function LocusDetails({
           </button>
         </form>
       </div>
+      <div className="space-y-2">
+        <div className="flex gap-2 text-xs">
+          <button type="button" className="btn-outline !px-2 !py-1" onClick={() => setDeckPanel(deckPanel === "import" ? null : "import")}>
+            Import from deck
+          </button>
+          {cards.length > 0 && (
+            <button type="button" className="btn-outline !px-2 !py-1" onClick={() => setDeckPanel(deckPanel === "send" ? null : "send")}>
+              Send to deck
+            </button>
+          )}
+        </div>
+        {linkMsg && <p className="text-xs text-muted-foreground">{linkMsg}</p>}
+        {deckPanel === "import" && (
+          <ImportFromDeck roomId={room.id} locusId={locus.id} onDone={() => onDeckChanged?.()} onClose={() => setDeckPanel(null)} />
+        )}
+        {deckPanel === "send" && (
+          <SendToDeck
+            source={{ locus_id: locus.id }}
+            defaultTitle={locus.label || room.title}
+            label="Send this locus's cards to a deck"
+            onClose={() => {
+              setDeckPanel(null);
+              onDeckChanged?.();
+            }}
+          />
+        )}
+      </div>
       <button type="button" className="btn-danger w-full py-1.5 text-sm" disabled={busy} onClick={onDelete}>
         Delete locus
       </button>
@@ -528,6 +760,8 @@ interface QuickCard {
   label: string;
   front: string;
   back: string;
+  /** Wrong answers, comma-separated (up to 3); blank = auto-derive from sibling cards. */
+  options: string;
 }
 
 /**
@@ -548,23 +782,24 @@ function QuickCardForm({
   number: number;
   onChange: (q: QuickCard) => void;
   onRename: (label: string) => void;
-  onSave: (front: string, back: string) => Promise<void>;
+  onSave: (front: string, back: string, options: string) => Promise<void>;
   onClose: () => void;
 }) {
   const frontRef = useRef<HTMLInputElement>(null);
   const backRef = useRef<HTMLInputElement>(null);
+  const optionsRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     frontRef.current?.focus();
   }, []);
   const save = async () => {
     const front = quick.front.trim();
     if (!front) return frontRef.current?.focus();
-    onChange({ ...quick, front: "", back: "" });
+    onChange({ ...quick, front: "", back: "", options: "" });
     frontRef.current?.focus();
-    await onSave(front, quick.back.trim());
+    await onSave(front, quick.back.trim(), quick.options);
   };
   const done = async () => {
-    if (quick.front.trim()) await onSave(quick.front.trim(), quick.back.trim());
+    if (quick.front.trim()) await onSave(quick.front.trim(), quick.back.trim(), quick.options);
     onClose();
   };
   const onKey = (e: React.KeyboardEvent) => {
@@ -627,6 +862,20 @@ function QuickCardForm({
           className="input-base min-w-40 flex-1 !py-1.5 text-sm"
           value={quick.back}
           onChange={(e) => onChange({ ...quick, back: e.target.value })}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              void save();
+            }
+          }}
+        />
+        <input
+          ref={optionsRef}
+          aria-label="Wrong answers, comma-separated"
+          placeholder="Wrong answers, comma-separated (optional)"
+          className="input-base min-w-40 flex-1 !py-1.5 text-sm"
+          value={quick.options}
+          onChange={(e) => onChange({ ...quick, options: e.target.value })}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();

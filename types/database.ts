@@ -8,6 +8,8 @@ export interface User {
   created_at: string;
   /** Server onboarding flag (migration 20261007000001). Null = never onboarded. */
   onboarded_at: string | null;
+  /** Guided-overlay resume point (migration 20261007000003). Null = step 0. */
+  onboarding_step: number | null;
 }
 
 export interface Deck {
@@ -178,6 +180,8 @@ export interface StudySession {
   user_id: string;
   palace_id: string | null;
   room_id: string | null;
+  /** Deck-only quiz sessions (migration 20261007000003). */
+  deck_id: string | null;
   scope: Record<string, unknown>;
   results: { score?: number; total?: number; [key: string]: unknown };
   created_at: string;

@@ -105,3 +105,60 @@ describe("buildHomeSummary", () => {
     expect(out.avgScore).toBeCloseTo(0.8);
   });
 });
+
+describe("streakDays local day", () => {
+  it("counts days in the learner's timezone, not UTC", () => {
+    // 2026-10-06T02:00Z is still Oct 5 for a UTC-5 learner (offset +300).
+    const now = Date.parse("2026-10-06T02:00:00.000Z");
+    const sessions = ["2026-10-06T01:00:00.000Z", "2026-10-05T03:00:00.000Z"];
+    // UTC view: Oct 6 + Oct 5 = 2 days. Local (UTC-5): Oct 5 + Oct 4 = 2 days too,
+    // but a lone 01:00Z session must not count as "tomorrow" for a UTC-5 learner.
+    expect(streakDays(["2026-10-06T01:00:00.000Z"], now, 300)).toBe(1);
+    expect(streakDays(sessions, now, 300)).toBe(2);
+    expect(streakDays(sessions, now, 0)).toBe(2);
+  });
+  it("is DST-safe across a long run", () => {
+    const now = Date.parse("2026-11-02T18:00:00.000Z");
+    const days = Array.from({ length: 5 }, (_, i) => new Date(now - i * 86_400_000).toISOString());
+    expect(streakDays(days, now, 300)).toBe(5);
+  });
+});
+
+describe("rollupDecks", () => {
+  it("counts decks, flashcards and unanchored", () => {
+    expect(
+      buildHomeSummary({
+        palaces: [], rooms: [], loci: [], cards: [], reviews: [], sessions: [], now: NOW,
+        deckCount: 2,
+        flashcards: [
+          { deck_id: "d1", source_card_id: null },
+          { deck_id: "d1", source_card_id: "c1" },
+        ],
+      }).decks
+    ).toEqual({ decks: 2, flashcards: 2, unanchored: 1, portDeckId: "d1" });
+  });
+});
+
+describe("rollupDecks portDeckId", () => {
+  it("points at the deck with the most unanchored flashcards, null when all anchored", () => {
+    expect(
+      buildHomeSummary({
+        palaces: [], rooms: [], loci: [], cards: [], reviews: [], sessions: [], now: NOW,
+        deckCount: 2,
+        flashcards: [
+          { deck_id: "a", source_card_id: null },
+          { deck_id: "b", source_card_id: null },
+          { deck_id: "b", source_card_id: null },
+          { deck_id: "b", source_card_id: "c1" },
+        ],
+      }).decks.portDeckId
+    ).toBe("b");
+    expect(
+      buildHomeSummary({
+        palaces: [], rooms: [], loci: [], cards: [], reviews: [], sessions: [], now: NOW,
+        deckCount: 1,
+        flashcards: [{ deck_id: "a", source_card_id: "c1" }],
+      }).decks.portDeckId
+    ).toBeNull();
+  });
+});

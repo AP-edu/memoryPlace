@@ -66,6 +66,11 @@ export function RoomShell({
       g.traverse((obj) => {
         const mesh = obj as THREE.Mesh;
         if (!mesh.isMesh) return;
+        // Doorway hit boxes stay invisible; they only stop taking clicks when faded.
+        if (mesh.userData.hit) {
+          mesh.raycast = hidden ? noRaycast : THREE.Mesh.prototype.raycast;
+          return;
+        }
         const mat = mesh.material as THREE.MeshStandardMaterial;
         mat.transparent = hidden;
         mat.opacity = hidden ? 0.12 : 1;
@@ -129,6 +134,26 @@ export function RoomShell({
                 </mesh>
               );
             })}
+            {/* Invisible hit boxes over doorways: clicks there reach the editor so
+                it can say "that's a doorway" instead of silently doing nothing. */}
+            {(onWallClick || onWallMove) &&
+              gaps.map((o) => {
+                const w = openingWidthM(o, size);
+                const c = wallPoint(wall, o.wall_offset ?? 0.5, size);
+                const mid = { x: c.x - (n.x * WALL_THICK) / 2, y: room.height / 2, z: c.z - (n.z * WALL_THICK) / 2 };
+                return (
+                  <mesh
+                    key={`hit-${o.id}`}
+                    position={toScene(mid)}
+                    userData={{ wall, hit: true }}
+                    onClick={handler(wall, onWallClick)}
+                    onPointerMove={handler(wall, onWallMove)}
+                  >
+                    <boxGeometry args={horizontal ? [w, room.height, WALL_THICK] : [WALL_THICK, room.height, w]} />
+                    <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+                  </mesh>
+                );
+              })}
             {/* Lintels over every opening. Doors get a frame and an open door
                 leaf; archways stay a plain open gap. */}
             {gaps.map((o) => {
@@ -299,12 +324,21 @@ function CardStack({ count, yaw, colors }: { count: number; yaw: number; colors:
   );
 }
 
+// Day: warm sun over white marble. Night: dim, cool moonlight.
 export function SceneLights({ colors }: { colors: SceneColors }) {
-  return (
+  return colors.night ? (
     <>
-      <hemisphereLight args={[colors.sky, colors.floor, 0.9]} />
-      <ambientLight intensity={0.35} />
-      <directionalLight position={[8, 14, 6]} intensity={1.0} />
+      {/* Near-neutral cool light: strongly blue light crushes the red/green of the blue-grey stone. */}
+      <hemisphereLight args={["#dfe6ff", colors.floor, 1.4]} />
+      <ambientLight intensity={0.9} color="#e4eaff" />
+      <directionalLight position={[8, 14, 6]} intensity={1.0} color="#d6e0ff" />
+    </>
+  ) : (
+    <>
+      {/* Pale horizon tone (not the saturated zenith) so white marble stays white. */}
+      <hemisphereLight args={[colors.horizon, colors.floor, 1.1]} />
+      <ambientLight intensity={0.7} />
+      <directionalLight position={[8, 14, 6]} intensity={1.0} color="#fff4dc" />
     </>
   );
 }

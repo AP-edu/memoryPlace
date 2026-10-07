@@ -8,7 +8,7 @@
 
 import type { Locus, Opening, Room, WallFace } from "@/types/database";
 import { clamp01, locusWorldPos, wallLength, wallPoint } from "./geometry";
-import { openingAt, EYE_HEIGHT, type Pose } from "./walk";
+import { openingAt, wallSpans, EYE_HEIGHT, type Pose } from "./walk";
 
 export interface Vec3 {
   x: number;
@@ -72,6 +72,53 @@ export function anchorFromPoint(
   const maxH = Math.max(minH, room.height - 0.2);
   const height = Math.min(maxH, Math.max(minH, round(p.y, opts.heightStep ?? 0.05)));
   return { wall, wall_offset: clean(len > 0 ? clamp01(snapped / len) : 0.5), height: clean(height) };
+}
+
+/**
+ * True when an anchor lands inside a door/archway gap (plus `marginM` metres
+ * of clearance). Loci can't be placed there: nothing to hang them on, and a
+ * marker in a doorway would block walking through it.
+ */
+export function anchorInOpening(
+  anchor: Pick<WallAnchor, "wall" | "wall_offset">,
+  room: Pick<Room, "width" | "depth">,
+  openings: Opening[],
+  marginM = 0.15
+): boolean {
+  return openingAt(room, anchor.wall, anchor.wall_offset, openings, marginM) !== null;
+}
+
+/**
+ * Evenly space `loci` (all on `wall`) across that wall's SOLID spans, skipping
+ * door/archway gaps, and keep their current left-to-right order. Returns only
+ * the loci that actually move (offset changed by more than 0.001).
+ */
+export function distributeOnWall(
+  loci: Array<Pick<Locus, "id" | "wall_offset" | "position">>,
+  wall: WallFace,
+  room: Pick<Room, "width" | "depth">,
+  openings: Opening[]
+): Array<{ id: string; wall_offset: number }> {
+  const spans = wallSpans(room, wall, openings);
+  const solid = spans.reduce((t, sp) => t + (sp.to - sp.from), 0);
+  if (loci.length === 0 || solid <= 0) return [];
+  const order = [...loci].sort((a, b) => (a.wall_offset ?? 0.5) - (b.wall_offset ?? 0.5) || a.position - b.position);
+  const out: Array<{ id: string; wall_offset: number }> = [];
+  order.forEach((l, i) => {
+    let remaining = ((i + 1) / (order.length + 1)) * solid;
+    let offset = spans[spans.length - 1].to;
+    for (const sp of spans) {
+      const w = sp.to - sp.from;
+      if (remaining <= w) {
+        offset = sp.from + remaining;
+        break;
+      }
+      remaining -= w;
+    }
+    const next = Math.round(offset * 1000) / 1000;
+    if (Math.abs(next - (l.wall_offset ?? 0.5)) > 0.001) out.push({ id: l.id, wall_offset: next });
+  });
+  return out;
 }
 
 /** Nearest wall to an arbitrary point inside/around the room, as an anchor. */

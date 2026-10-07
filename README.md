@@ -33,22 +33,23 @@ The first registered user automatically becomes an admin (can access `/admin` an
 ## Routes
 
 - `/login`, `/signup` — authentication (email normalized + validated, `?error=` surfaced)
-- `/home` — Palace Overview + due summary (protected)
-- `/palaces` — redirect shim → `/home`
+- `/home` — dashboard: continue, decks, stats (protected)
+- `/palaces` — all palaces: search, create, Open / Walk / Study
 - `/palaces/[id]` — 2D blueprint / 3D palace, rooms, study + walk links
 - `/palaces/[id]/print` — printable blueprint + copy-text
 - `/rooms/[id]` — room editor (loci, cards, openings)
 - `/walk/[roomId]`, `/walk/palace/[palaceId]` — first-person walk + guided tour
 - `/study/palace/[palaceId]`, `/study/[roomId]` — due-first / walkthrough sessions
-- `/quiz/[deckId]` — retained straight-quiz flow
-- `/results` — latest quiz score
-- `/profile` — stats + continue/weakest links
+- `/decks`, `/decks/[id]` — standalone decks (tags, optional palace link), flashcard CRUD, port to a palace
+- `/quiz/[deckId]` — deck quiz (same engine as palace study; linked cards share SRS)
+- `/results` — session summary: score, mastery per room, weak cards (edit / snooze / move)
+- `/profile` — edit name/email, change password, theme, stats, replay the tour
 - `/forgot-password`, `/reset-password/[token]` — password reset
 - `/admin` — all palaces (admin only)
 
 ## API
 
-REST endpoints under `/api/palaces`, `/api/rooms`, `/api/levels`, `/api/openings`, `/api/loci`, `/api/cards`, `/api/reviews`, `/api/study-sessions`, `/api/home/summary`, `/api/auth/*` (plus `/api/decks`, `/api/flashcards`, `/api/quiz-results` for the retained straight-quiz flow). All require a session except signup. Ownership rules: regular users see/manage only their own rows; admins see/manage all.
+REST endpoints under `/api/palaces`, `/api/rooms`, `/api/levels`, `/api/openings`, `/api/loci`, `/api/cards`, `/api/reviews`, `/api/study-sessions`, `/api/home/summary`, `/api/profile` (+ `/api/profile/password`), `/api/auth/*`, and the deck world: `/api/decks`, `/api/flashcards`, `/api/links` (card↔flashcard live link: link / push / unlink), `/api/imports` (deck → room), `/api/exports` (room/locus → deck). `/api/quiz-results` is legacy and unused. All require a session except signup. Ownership rules: regular users see/manage only their own rows; admins see/manage all.
 
 ## Scripts
 

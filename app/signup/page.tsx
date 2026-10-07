@@ -65,21 +65,21 @@ export default function SignupPage() {
         {error && <p className="mb-3 text-sm text-destructive">{error}</p>}
         <form onSubmit={handleSubmit} className="space-y-3">
           <input
-            placeholder="Name"
+            placeholder="Name" aria-label="Name" autoComplete="name"
             className="input-base"
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
           />
           <input
             type="email"
-            placeholder="Email"
+            placeholder="Email" aria-label="Email" autoComplete="email"
             className="input-base"
             value={form.email}
             onChange={(e) => setForm({ ...form, email: e.target.value })}
           />
           <input
             type="password"
-            placeholder="Password"
+            placeholder="Password" aria-label="Password" autoComplete="new-password"
             className="input-base"
             value={form.password}
             onChange={(e) => setForm({ ...form, password: e.target.value })}

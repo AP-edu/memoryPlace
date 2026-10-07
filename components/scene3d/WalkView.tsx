@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { Canvas, useFrame, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
 import { Html } from "@react-three/drei";
@@ -34,14 +35,19 @@ import {
   inwardNormal,
   lerpPose,
   toScene,
+  tourOrder,
   viewPoseForLocus,
   type TourStop,
 } from "@/lib/scene3d";
 import { LocusMarkers, RoomShell, SceneLights } from "./RoomShell";
+import { SceneSky } from "./SceneSky";
 import { SceneGate } from "./SceneBoundary";
 import Markdown from "@/components/Markdown";
 import { useSceneColors } from "./useSceneColors";
 import { buildChoices } from "@/lib/quiz";
+import type { SessionAnswer } from "@/lib/reviewTypes";
+import type { Blueprint } from "@/lib/blueprint";
+import MiniMap, { type MiniMapPose } from "./MiniMap";
 
 // First-person walk mode + guided tour. Movement/collision/focus/tour maths
 // live in lib/walk.ts and lib/scene3d.ts (pure, unit-tested); this file is
@@ -139,7 +145,10 @@ function PlayerRig({
     for (const o of openings) {
       if (!o.target_room_id) continue;
       const p = wallPoint(o.wall, o.wall_offset ?? 0.5, size);
-      if (Math.hypot(p.x - pose.x, p.z - pose.z) < 1.6) near = o;
+      // Hysteresis: appear at 2.0 m, only disappear past 2.6 m, so the prompt
+      // doesn't flicker when you hover at the edge of the radius.
+      const radius = lastNear.current === o.id ? 2.6 : 2.0;
+      if (Math.hypot(p.x - pose.x, p.z - pose.z) < radius) near = o;
     }
     const nearId = near?.id ?? null;
     if (nearId !== lastNear.current) {
@@ -316,6 +325,15 @@ export interface WalkViewProps {
   onExitDoor?: (opening: Opening) => void;
   /** Record a tour answer (e.g. POST /api/reviews). */
   onGrade?: (card: Card, correct: boolean) => void | Promise<void>;
+  /**
+   * Called once when a tour finishes with the graded answers. May resolve to a
+   * href for the full session summary (shown as a button on the tour card).
+   */
+  onTourComplete?: (answers: SessionAnswer[], got: number, total: number) => Promise<string | null | void> | void;
+  /** Top-down plan of this room's whole level; enables the live minimap. */
+  levelPlan?: Blueprint | null;
+  /** Minimap taps on another room / a linked door open that room. */
+  onGoRoom?: (roomId: string) => void;
   /** Extra controls rendered top-right. */
   actions?: React.ReactNode;
   /** Start the guided tour immediately. */
@@ -338,6 +356,9 @@ export default function WalkView({
   spawn,
   onExitDoor,
   onGrade,
+  onTourComplete,
+  levelPlan = null,
+  onGoRoom,
   actions,
   autoTour = false,
   cardOrder = null,
@@ -420,9 +441,25 @@ export default function WalkView({
     return () => window.clearInterval(t);
   }, [nav, navIndex, room]);
 
+  // Minimap pose bridge: poseRef is mutated every frame (never React state), so
+  // mirror it at ~8 Hz — plenty for a dot and wedge, no per-frame renders.
+  const [minimapPose, setMinimapPose] = useState<MiniMapPose | null>(null);
+  useEffect(() => {
+    if (!levelPlan) return;
+    const t = window.setInterval(() => {
+      const p = poseRef.current;
+      setMinimapPose((prev) =>
+        prev && Math.abs(prev.x - p.x) < 0.03 && Math.abs(prev.z - p.z) < 0.03 && Math.abs(prev.yaw - p.yaw) < 0.02
+          ? prev
+          : { x: p.x, z: p.z, yaw: p.yaw }
+      );
+    }, 120);
+    return () => window.clearInterval(t);
+  }, [levelPlan]);
+
   // ---------------------------------------------------------------- tour
   const [tour, setTour] = useState<{ index: number; revealed: boolean; results: Record<string, boolean> } | null>(null);
-  const [summary, setSummary] = useState<{ got: number; total: number } | null>(null);
+  const [summary, setSummary] = useState<{ got: number; total: number; href?: string | null } | null>(null);
   const stop = tour ? stops[tour.index] ?? null : null;
 
   const glideTo = useCallback(
@@ -439,17 +476,45 @@ export default function WalkView({
   const startTour = useCallback(() => {
     if (stops.length === 0) return;
     setSummary(null);
+    setRevealedCards({});
     setTour({ index: 0, revealed: false, results: {} });
     glideTo(stops[0]);
   }, [stops, glideTo]);
+
+  // Tour end: show the local summary now, persist the session + answers in
+  // the background so the full /results summary can be linked when it lands.
+  const finishTour = useCallback(
+    (results: Record<string, boolean>) => {
+      const graded = Object.values(results);
+      const got = graded.filter(Boolean).length;
+      setSummary({ got, total: graded.length });
+      setTour(null);
+      if (!onTourComplete || graded.length === 0) return;
+      const answers: SessionAnswer[] = stops
+        .filter((s) => s.card && s.key in results)
+        .map((s) => ({
+          id: s.card!.id,
+          kind: "card" as const,
+          cardId: s.card!.id,
+          correct: results[s.key],
+          roomId: room.id,
+          roomTitle: room.title,
+          locusId: s.locus.id,
+          locusLabel: s.locus.label,
+          label: cardFront(s.card!).slice(0, 200),
+        }));
+      void Promise.resolve(onTourComplete(answers, got, graded.length))
+        .then((href) => href && setSummary((prev) => (prev ? { ...prev, href } : prev)))
+        .catch(() => {});
+    },
+    [stops, room, onTourComplete]
+  );
 
   const goto = useCallback(
     (index: number) => {
       if (!tour) return;
       if (index >= stops.length) {
-        const graded = Object.values(tour.results);
-        setSummary({ got: graded.filter(Boolean).length, total: graded.length });
-        setTour(null);
+        finishTour(tour.results);
         return;
       }
       const i = Math.max(0, index);
@@ -458,7 +523,7 @@ export default function WalkView({
       // Only move the camera when the locus changes (several cards can share one).
       if (!prev || prev.locus.id !== stops[i].locus.id || i === tour.index) glideTo(stops[i]);
     },
-    [tour, stops, glideTo]
+    [tour, stops, glideTo, finishTour]
   );
 
   const grade = useCallback(
@@ -468,16 +533,14 @@ export default function WalkView({
       const results = { ...tour.results, [stop.key]: correct };
       const next = tour.index + 1;
       if (next >= stops.length) {
-        const graded = Object.values(results);
-        setSummary({ got: graded.filter(Boolean).length, total: graded.length });
-        setTour(null);
+        finishTour(results);
         return;
       }
       const prev = stop;
       setTour({ index: next, revealed: false, results });
       if (prev.locus.id !== stops[next].locus.id) glideTo(stops[next]);
     },
-    [tour, stop, stops, onGrade, glideTo]
+    [tour, stop, stops, onGrade, glideTo, finishTour]
   );
 
   // Phase D: MCQ choices for the current stop (stable per stop — memoized so
@@ -521,7 +584,7 @@ export default function WalkView({
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
       const { tour: tr, stop: st, goto: go, grade: gr, startTour: start, stepNav: step, choose: ch, mcq: mq } = tourRef.current;
       if (tr) {
-        // Tour keys: Space/Enter reveal, ←/→ step, 1-4 answer MCQ, 1/2 grade, Esc leave.
+        // Tour keys: Space/Enter reveal, ←/→ step, 1-4 answer MCQ, 1 = Missed / 2 = Got it (left/right button), Esc leave.
         if (e.code === "Space" || e.code === "Enter") {
           e.preventDefault();
           if (!tr.revealed) setTour({ ...tr, revealed: true });
@@ -537,7 +600,7 @@ export default function WalkView({
         } else if (!tr.revealed && mq && !mq.fallback && st?.card && ["1", "2", "3", "4"].includes(e.key)) {
           ch(Number(e.key) - 1);
         } else if (tr.revealed && st?.card && (e.key === "1" || e.key === "2")) {
-          gr(e.key === "1");
+          gr(e.key === "2");
         }
         return;
       }
@@ -621,7 +684,8 @@ export default function WalkView({
   function handleFocus(id: string | null) {
     setFocusedId(id);
     setDismissedId((d) => (d === id ? d : null));
-    setRevealedCards({});
+    // Revealed answers are keyed by card id and kept while you glance around;
+    // they reset when a tour starts (see startTour), not on every focus change.
   }
 
   const focused = !tour && focusedId ? items.find((i) => i.locus.id === focusedId) ?? null : null;
@@ -629,6 +693,28 @@ export default function WalkView({
   const focusedNumber = focused ? stops.find((s) => s.locus.id === focused.locus.id)?.locusIndex ?? 0 : 0;
   const lociCount = new Set(stops.map((s) => s.locus.id)).size;
   const targetTitle = nearDoor?.target_room_id ? roomTitles[nearDoor.target_room_id] ?? "next room" : null;
+
+  // Minimap: the n-th locus (study order) is the same locus as nav stop / tour stop n.
+  const mapLocusId = (n: number) => tourOrder(loci)[n - 1]?.id;
+  function goMapLocus(n: number) {
+    const id = mapLocusId(n);
+    if (!id) return;
+    if (tour) {
+      const i = stops.findIndex((s) => s.locus.id === id);
+      if (i >= 0) goto(i);
+      return;
+    }
+    const i = nav.findIndex((s) => s.kind === "locus" && s.locus.id === id);
+    if (i >= 0) goStop(i);
+  }
+  const navCurrent = nav[navIndex];
+  const activeLocusN = tour && stop
+    ? stop.locusIndex + 1
+    : focused
+      ? (stops.find((s) => s.locus.id === focused.locus.id)?.locusIndex ?? -1) + 1 || null
+      : navCurrent?.kind === "locus"
+        ? navCurrent.number
+        : null;
 
   return (
     <div className={`relative w-full overflow-hidden bg-background ${className}`}>
@@ -645,8 +731,9 @@ export default function WalkView({
             gl={{ antialias: true, powerPreference: "high-performance", failIfMajorPerformanceCaveat: false }}
             camera={{ fov: 70, near: 0.05, far: 120 }}
           >
-          <color attach="background" args={[colors.sky]} />
+          <color attach="background" args={[colors.horizon]} />
           <fog attach="fog" args={[colors.fog, 12, 40]} />
+          <SceneSky colors={colors} radius={100} />
           <SceneLights colors={colors} />
           <RoomShell room={room} openings={openings} colors={colors} />
           <LocusMarkers room={room} loci={loci} colors={colors} selectedId={stop?.locus.id ?? focused?.locus.id ?? null} showPath={!!tour} />
@@ -715,6 +802,20 @@ export default function WalkView({
           {actions}
         </div>
       </div>
+
+      {levelPlan && (
+        <div className={`absolute bottom-4 right-4 z-10 ${tour || focused ? "max-sm:hidden" : ""}`}>
+          <MiniMap
+            plan={levelPlan}
+            currentRoomId={room.id}
+            pose={minimapPose}
+            activeLocusN={activeLocusN}
+            roomTitles={roomTitles}
+            onGoLocus={goMapLocus}
+            onGoRoom={onGoRoom}
+          />
+        </div>
+      )}
 
       {nearDoor && targetTitle && !tour && onExitDoor && (
         <div className="pointer-events-none absolute inset-x-0 top-24 flex justify-center">
@@ -785,10 +886,10 @@ export default function WalkView({
               {stop.card && tour.revealed && (
                 <>
                   <button type="button" className="btn-outline" onClick={() => grade(false)}>
-                    Missed <kbd className="ml-1 rounded bg-muted px-1 text-[10px]">2</kbd>
+                    Missed <kbd className="ml-1 rounded bg-muted px-1 text-[10px]">1</kbd>
                   </button>
                   <button type="button" className="btn-primary" onClick={() => grade(true)}>
-                    Got it <kbd className="ml-1 rounded bg-primary-foreground/20 px-1 text-[10px]">1</kbd>
+                    Got it <kbd className="ml-1 rounded bg-primary-foreground/20 px-1 text-[10px]">2</kbd>
                   </button>
                 </>
               )}
@@ -810,7 +911,12 @@ export default function WalkView({
               {summary.total > 0 ? `You recalled ${summary.got} of ${summary.total} cards.` : "You walked every locus."}
             </p>
             <div className="mt-4 flex justify-center gap-2">
-              <button type="button" className="btn-primary" onClick={startTour}>
+              {summary.href && (
+                <Link href={summary.href} className="btn-primary">
+                  Full summary
+                </Link>
+              )}
+              <button type="button" className={summary.href ? "btn-outline" : "btn-primary"} onClick={startTour}>
                 Tour again
               </button>
               <button type="button" className="btn-outline" onClick={() => setSummary(null)}>

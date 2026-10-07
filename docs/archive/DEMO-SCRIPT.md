@@ -1,3 +1,5 @@
+> **STALE — archived.** Written for the pre-palace courses/decks world (deleted in Phase G). Kept for history only; do not build from it. Current docs: `AGENTS.md`, `README.md`, `docs/product/`.
+
 # MemoryPlace — Demo Script & Core Features
 
 Final project demo script. Covers the core features to know and the full authentication/architecture

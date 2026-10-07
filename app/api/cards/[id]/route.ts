@@ -39,7 +39,7 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
   const owner = await cardOwner(id);
   if (!owner || !canModify(session, owner)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const { front, back, type, options, position } = await req.json();
+  const { front, back, type, options, position, locus_id } = await req.json();
   if (type !== undefined && !["basic", "cloze", "image", "audio"].includes(type)) {
     return NextResponse.json({ error: "Invalid card type" }, { status: 400 });
   }
@@ -52,19 +52,37 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
   if (type !== undefined) updates.type = type;
   if (position !== undefined) updates.position = position;
   if (options !== undefined) {
-    const merged = {
-      front: back !== undefined ? back : card.front,
-      back: back !== undefined ? back : card.back,
-    };
+    const backSource = back !== undefined ? back : card.back;
     const backText =
-      typeof merged.back === "string"
-        ? merged.back
-        : typeof merged.back?.text === "string"
-          ? merged.back.text
+      typeof backSource === "string"
+        ? backSource
+        : typeof backSource?.text === "string"
+          ? backSource.text
           : "";
     const opt = validateOptionsInput(options, backText);
     if (!opt.ok) return NextResponse.json({ error: opt.error }, { status: 400 });
     updates.options = opt.value.length > 0 ? opt.value : null;
+  }
+  if (locus_id !== undefined && locus_id !== card.locus_id) {
+    // Move between loci (keeps the card id, so SRS history + links survive).
+    // The caller must be able to modify the destination room too.
+    const { data: target } = await supabase.from("loci").select("id, room_id").eq("id", locus_id).maybeSingle();
+    if (!target) return NextResponse.json({ error: "Target locus not found" }, { status: 404 });
+    const { data: targetRoom } = await supabase.from("rooms").select("user_id").eq("id", target.room_id).maybeSingle();
+    if (!targetRoom || !canModify(session, targetRoom.user_id)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    updates.locus_id = locus_id;
+    if (position === undefined) {
+      const { data: last } = await supabase
+        .from("cards")
+        .select("position")
+        .eq("locus_id", locus_id)
+        .order("position", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      updates.position = typeof last?.position === "number" ? last.position + 1 : 0;
+    }
   }
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });

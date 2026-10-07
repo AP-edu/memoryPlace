@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { getSupabase } from "@/lib/supabase";
+import { canModify } from "@/lib/ownership";
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -11,6 +12,10 @@ export async function GET(req: NextRequest) {
   const deckId = req.nextUrl.searchParams.get("deck");
   let query = getSupabase().from("flashcards").select("*").order("created_at", { ascending: false });
   if (deckId) {
+    // Decks are private: only the owner (or an admin) reads their flashcards.
+    const { data: deck } = await getSupabase().from("decks").select("id, owner").eq("id", deckId).maybeSingle();
+    if (!deck) return NextResponse.json({ error: "Deck not found" }, { status: 404 });
+    if (!canModify(session, deck.owner)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     query = query.eq("deck_id", deckId);
   } else {
     query = query.eq("owner", session.user.id);

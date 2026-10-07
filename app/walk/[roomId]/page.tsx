@@ -4,10 +4,12 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useFetch } from "@/hooks/useFetch";
 import { useSearchParam } from "@/hooks/useSearchParam";
+import { useLevelPlan } from "@/hooks/useLevelPlan";
 import type { Card, Locus, Opening, Room } from "@/types/database";
 import { returnDoor, spawnAtDoor } from "@/lib/scene3d";
 import { sortPlayQueue, type QueueItem } from "@/lib/srs";
 import WalkView from "@/components/scene3d/WalkView";
+import type { SessionAnswer } from "@/lib/reviewTypes";
 
 // First-person walk mode + guided tour. Rendering lives in
 // components/scene3d/WalkView (shared with /dev/room-3d).
@@ -35,6 +37,8 @@ export default function WalkPage() {
   const fromId = useSearchParam("from");
   const tourParam = useSearchParam("tour") === "1";
 
+  const levelPlan = useLevelPlan(room?.palace_id, room?.id);
+
   const roomTitles = useMemo(() => Object.fromEntries((siblings ?? []).map((r) => [r.id, r.title])), [siblings]);
   const spawn = useMemo(() => {
     if (!room || !openings || !fromId) return null;
@@ -61,6 +65,33 @@ export default function WalkPage() {
     }
   }, []);
 
+  // Persist the finished tour as a study session so /results can show the
+  // per-room mastery + weak cards. Resolves to the summary href (or null).
+  const onTourComplete = useCallback(
+    async (answers: SessionAnswer[], got: number, total: number) => {
+      try {
+        const res = await fetch("/api/study-sessions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ room_id: roomId, score: got, total, answers }),
+        });
+        if (!res.ok) return null;
+        const saved = await res.json();
+        const q = new URLSearchParams({
+          session: saved.id,
+          score: String(got),
+          total: String(total),
+          back: `/walk/${roomId}`,
+          backLabel: "Back to the walk",
+        });
+        return `/results?${q.toString()}`;
+      } catch {
+        return null;
+      }
+    },
+    [roomId]
+  );
+
   if (!roomId) return <p className="p-6">Missing room id.</p>;
   if (loadingRoom || loadingLoci || loadingOpenings) return <p className="p-6 text-muted-foreground">Entering the palace...</p>;
   if (room && room.id !== roomId) return <p className="p-6 text-muted-foreground">Walking through...</p>;
@@ -80,6 +111,9 @@ export default function WalkPage() {
       spawn={spawn}
       onExitDoor={onExitDoor}
       onGrade={onGrade}
+      onTourComplete={onTourComplete}
+      levelPlan={levelPlan}
+      onGoRoom={(id) => router.push(`/walk/${id}?from=${room.id}`)}
       autoTour={tourParam}
       cardOrder={cardOrder}
       className="h-[calc(100dvh-3.5rem)]"

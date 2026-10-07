@@ -35,14 +35,14 @@ export default function ResetPasswordPage() {
         <form onSubmit={handleSubmit} className="space-y-3">
           <input
             type="password"
-            placeholder="New password"
+            placeholder="New password" aria-label="New password" autoComplete="new-password"
             className="input-base"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
           <input
             type="password"
-            placeholder="Confirm new password"
+            placeholder="Confirm new password" aria-label="Confirm new password" autoComplete="new-password"
             className="input-base"
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}

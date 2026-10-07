@@ -4,10 +4,11 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useFetch } from "@/hooks/useFetch";
-import type { Level, Opening, Palace, Room } from "@/types/database";
+import type { Level, Locus, Opening, Palace, Room } from "@/types/database";
 import { Room3DPreview } from "@/components/palace/Room3DPreview";
 import { GridEditor } from "@/components/palace-editor/GridEditor";
 import { httpBackend } from "@/components/palace-editor/backend";
+import { PageSkeleton } from "@/components/ui/Skeleton";
 
 // three.js is client-only and heavy: load the 3D palace tab on demand.
 const Palace3DView = dynamic(() => import("@/components/palace/Palace3DView"), {
@@ -25,6 +26,10 @@ export default function PalacePage() {
   const { data: openings, loading: loadingOpenings, error: openingsError } = useFetch<Opening[]>(
     id ? `/api/openings?palace=${id}` : null
   );
+  // Every locus in the palace: drawn in the 3D overview + counted on room cards.
+  const { data: palaceLoci } = useFetch<Locus[]>(id ? `/api/loci?palace=${id}` : null);
+  const lociByRoom = new Map<string, number>();
+  for (const l of palaceLoci ?? []) lociByRoom.set(l.room_id, (lociByRoom.get(l.room_id) ?? 0) + 1);
 
   const [palaceTitle, setPalaceTitle] = useState("");
   const [palaceDesc, setPalaceDesc] = useState("");
@@ -90,8 +95,8 @@ export default function PalacePage() {
 
   return (
     <div className="mx-auto max-w-7xl p-4 sm:p-6">
-      <Link href="/home" className="btn-ghost">
-        {"\u2190 Back to home"}
+      <Link href="/palaces" className="btn-ghost">
+        {"\u2190 Back to palaces"}
       </Link>
 
       <div className="mt-3 flex flex-wrap gap-2">
@@ -174,10 +179,11 @@ export default function PalacePage() {
             fallbackLevelId={firstLiveLevelId}
             selectedId={highlightedRoomId}
             onSelect={setHighlightedRoomId}
+            loci={palaceLoci ?? []}
           />
         )
       ) : (
-        <p className="text-muted-foreground">Loading blueprint…</p>
+        <PageSkeleton label="Loading blueprint" cards={2} />
       )}
 
       {previewRoom && (
@@ -196,10 +202,22 @@ export default function PalacePage() {
             <Link href={`/walk/${previewRoom.id}?tour=1`} className="btn-outline px-3 py-1.5">
               Tour the loci
             </Link>
+            <Link href={`/rooms/${previewRoom.id}?tool=place`} className="btn-outline px-3 py-1.5">
+              + Add loci
+            </Link>
             <Link href={`/rooms/${previewRoom.id}`} className="btn-ghost">
               Edit room
             </Link>
           </div>
+        </div>
+      )}
+
+      {ready && liveRooms.length === 0 && (
+        <div className="card-base mt-8 p-6 text-center">
+          <p className="text-lg font-semibold">Draw your first room</p>
+          <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
+            Pick the Room tool on the blueprint above and drag out a rectangle. Then open it to place loci on its walls.
+          </p>
         </div>
       )}
 
@@ -226,10 +244,15 @@ export default function PalacePage() {
                           {r.width} × {r.depth} × {r.height} m
                         </span>
                       </div>
-                      <p className="mt-0.5 text-xs text-muted-foreground">{levelName(r)}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {levelName(r)} · {lociByRoom.get(r.id) ?? 0} loci
+                      </p>
                       <div className="mt-3 flex flex-wrap gap-2 text-sm" onClick={(e) => e.stopPropagation()}>
-                        <Link href={`/rooms/${r.id}`} className="btn-outline !px-3 !py-1.5">
-                          Edit room
+                        <Link
+                          href={`/rooms/${r.id}${(lociByRoom.get(r.id) ?? 0) === 0 ? "?tool=place" : ""}`}
+                          className="btn-outline !px-3 !py-1.5"
+                        >
+                          {(lociByRoom.get(r.id) ?? 0) === 0 ? "+ Add loci" : "Edit room"}
                         </Link>
                         <Link href={`/walk/${r.id}?tour=1`} className="btn-primary !px-3 !py-1.5">
                           Tour

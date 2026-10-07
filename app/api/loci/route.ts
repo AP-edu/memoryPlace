@@ -11,8 +11,20 @@ export async function GET(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const roomId = req.nextUrl.searchParams.get("room");
+  const palaceId = req.nextUrl.searchParams.get("palace");
   let query = supabase.from("loci").select("*").order("position", { ascending: true });
-  if (roomId) {
+  if (palaceId) {
+    // Every locus in one of YOUR palaces (the palace overview renders them all).
+    const { data: rooms, error: roomsError } = await supabase
+      .from("rooms")
+      .select("id")
+      .eq("palace_id", palaceId)
+      .eq("user_id", session.user.id);
+    if (roomsError) return NextResponse.json({ error: roomsError.message }, { status: 500 });
+    const ids = (rooms ?? []).map((r: { id: string }) => r.id);
+    if (ids.length === 0) return NextResponse.json([]);
+    query = query.in("room_id", ids);
+  } else if (roomId) {
     // Any authenticated user with a room id can read its loci (walkthrough needs this).
     query = query.eq("room_id", roomId);
   } else {
