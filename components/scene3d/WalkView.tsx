@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { Canvas, useFrame, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
@@ -34,6 +34,8 @@ import {
   exitThroughDoor,
   inwardNormal,
   lerpPose,
+  returnDoor,
+  spawnAtDoor,
   toScene,
   tourOrder,
   viewPoseForLocus,
@@ -43,6 +45,7 @@ import { LocusMarkers, RoomShell, SceneLights } from "./RoomShell";
 import { SceneSky } from "./SceneSky";
 import { SceneGate } from "./SceneBoundary";
 import Markdown from "@/components/Markdown";
+import { stripMarkdown } from "@/lib/markdownEdit";
 import { useSceneColors } from "./useSceneColors";
 import { buildChoices } from "@/lib/quiz";
 import type { SessionAnswer } from "@/lib/reviewTypes";
@@ -53,7 +56,18 @@ import { readSoundOn, setSoundOn, subscribeSound } from "@/lib/sound";
 import { playChime } from "./chime";
 import { FloorShadows, SceneFX } from "./SceneFX";
 import { PerformanceMonitor } from "@react-three/drei";
-import { Volume2, VolumeX } from "lucide-react";
+import { Building2, Footprints, Volume2, VolumeX } from "lucide-react";
+import {
+  aerialView,
+  carryPose,
+  doorBetween,
+  doorPassage,
+  roomOffset,
+  sameLevel,
+  sharedSpans,
+  twinFramedOpenings,
+  type RoomTally,
+} from "@/lib/building";
 
 // First-person walk mode + guided tour. Movement/collision/focus/tour maths
 // live in lib/walk.ts and lib/scene3d.ts (pure, unit-tested); this file is
@@ -68,11 +82,28 @@ interface Glide {
   t: number;
   /** Set when the glide ends at a locus (drives the arrival beat). */
   locusId?: string;
+  /** A second leg glided straight after this one (through a doorway). */
+  next?: Pose;
+  /** Runs when the last leg lands (e.g. step into the next room). */
+  onDone?: () => void;
 }
 
-/** Fly-in: seconds from the bird's-eye plan view down to eye level. */
-const INTRO_S = 1.7;
-const INTRO_PITCH = -1.45;
+/**
+ * Bird's-eye blend: 0 = eye level, 1 = high over the whole level looking
+ * down (the blueprint as a model). The fly-in starts at 1 and descends; the
+ * Overview button rises back up. `p` eases toward `target`.
+ */
+interface Aerial {
+  p: number;
+  target: 0 | 1;
+}
+/** Seconds between eye level and the bird's-eye view. */
+const AERIAL_S = 1.7;
+const AERIAL_PITCH = -1.45;
+/** Eye-level lens, and a long lens from the air (an architect's model, not a fisheye). */
+const WALK_FOV = 62;
+const AERIAL_FOV = 36;
+const FOG = { near: 12, far: 40 };
 
 function PlayerRig({
   room,
@@ -84,7 +115,8 @@ function PlayerRig({
   lookRef,
   glideRef,
   frozen,
-  introRef,
+  aerialRef,
+  overhead,
   onArrive,
   onFocus,
   onExit,
@@ -99,8 +131,9 @@ function PlayerRig({
   lookRef: React.MutableRefObject<{ yawDelta: number; pitchDelta: number }>;
   glideRef: React.MutableRefObject<Glide | null>;
   frozen: boolean;
-  /** Fly-in progress 0..1 (1 = done / skipped). */
-  introRef: React.MutableRefObject<number>;
+  aerialRef: React.MutableRefObject<Aerial>;
+  /** Where the bird's-eye camera hangs (this room's frame) and how high. */
+  overhead: { x: number; z: number; h: number };
   onArrive?: (locusId: string) => void;
   onFocus: (id: string | null) => void;
   onExit: (o: Opening) => void;
@@ -112,15 +145,20 @@ function PlayerRig({
   const lastFocus = useRef<string | null>(null);
   const lastNear = useRef<string | null>(null);
   const exited = useRef(false);
-  useFrame(({ camera }, delta) => {
+  useFrame(({ camera, scene }, delta) => {
     let pose = poseRef.current;
     const glide = glideRef.current;
     if (glide) {
       glide.t = Math.min(1, glide.t + delta / GLIDE_S);
       pose = lerpPose(glide.from, glide.to, easeInOut(glide.t));
       if (glide.t >= 1) {
-        glideRef.current = null;
-        if (glide.locusId) onArrive?.(glide.locusId);
+        if (glide.next) {
+          glideRef.current = { from: glide.to, to: glide.next, t: 0, locusId: glide.locusId, onDone: glide.onDone };
+        } else {
+          glideRef.current = null;
+          if (glide.locusId) onArrive?.(glide.locusId);
+          glide.onDone?.();
+        }
       }
     } else {
       pose = {
@@ -142,22 +180,45 @@ function PlayerRig({
     lookRef.current.pitchDelta = 0;
     poseRef.current = pose;
 
-    // Fly-in: start above the room looking down at its plan, then descend to
-    // eye level while tilting up (the blueprint becomes the place).
-    let camY = EYE_HEIGHT;
-    let pitch = pose.pitch;
-    const flying = introRef.current < 1;
-    if (flying) {
-      introRef.current = Math.min(1, introRef.current + delta / INTRO_S);
-      const e = easeInOut(introRef.current);
-      camY = EYE_HEIGHT + (1 - e) * (Math.max(room.width, room.depth) * 1.15 + 3);
-      pitch = INTRO_PITCH + (pose.pitch - INTRO_PITCH) * e;
+    // Bird's-eye blend: the fly-in descends from over the whole level (the
+    // blueprint becomes the place); Overview rises back up to it.
+    const air = aerialRef.current;
+    if (air.p !== air.target) {
+      const step = delta / AERIAL_S;
+      air.p = air.target > air.p ? Math.min(1, air.p + step) : Math.max(0, air.p - step);
     }
-    const f = forwardVec(pose.yaw, pitch);
-    camera.position.set(...toScene({ x: pose.x, y: camY, z: pose.z }));
-    camera.lookAt(...toScene({ x: pose.x + f.x, y: camY + f.y, z: pose.z + f.z }));
+    const flying = air.p > 0;
+    let cam = { x: pose.x, y: EYE_HEIGHT, z: pose.z };
+    let yaw = pose.yaw;
+    let pitch = pose.pitch;
+    if (flying) {
+      const e = easeInOut(air.p);
+      let dy = -pose.yaw; // north up from the air, like every plan
+      while (dy > Math.PI) dy -= 2 * Math.PI;
+      while (dy < -Math.PI) dy += 2 * Math.PI;
+      cam = { x: pose.x + (overhead.x - pose.x) * e, y: EYE_HEIGHT + (overhead.h - EYE_HEIGHT) * e, z: pose.z + (overhead.z - pose.z) * e };
+      yaw = pose.yaw + dy * e;
+      pitch = pose.pitch + (AERIAL_PITCH - pose.pitch) * e;
+    }
+    // Keep the far plane and fog beyond the whole building while high up.
+    const reach = Math.max(1, cam.y / 4);
+    if (scene.fog instanceof THREE.Fog) {
+      scene.fog.near = FOG.near * reach;
+      scene.fog.far = FOG.far * reach;
+    }
+    const far = Math.max(120, cam.y * 3);
+    const fov = flying ? WALK_FOV + (AERIAL_FOV - WALK_FOV) * easeInOut(air.p) : WALK_FOV;
+    const pc = camera as THREE.PerspectiveCamera;
+    if (Math.abs(pc.far - far) > 1 || Math.abs(pc.fov - fov) > 0.01) {
+      pc.far = far;
+      pc.fov = fov;
+      pc.updateProjectionMatrix();
+    }
+    const f = forwardVec(yaw, pitch);
+    camera.position.set(...toScene(cam));
+    camera.lookAt(...toScene({ x: cam.x + f.x, y: cam.y + f.y, z: cam.z + f.z }));
 
-    if (!frozen && !flying) {
+    if (!frozen && !flying && !glideRef.current) {
       const hit = focusLocus({ x: pose.x, y: EYE_HEIGHT, z: pose.z, yaw: pose.yaw, pitch: pose.pitch }, items);
       const id = hit ? hit.locus.id : null;
       if (id !== lastFocus.current) {
@@ -215,6 +276,51 @@ function DoorSigns({ room, openings, roomTitles }: { room: Room; openings: Openi
   );
 }
 
+/** Overview: a label over every room on the level; pick one to fly down into it. */
+function OverviewLabels({
+  rooms,
+  origin,
+  currentId,
+  tally,
+  lociCount,
+  onPick,
+}: {
+  rooms: Room[];
+  origin: Room;
+  currentId: string;
+  tally?: Record<string, RoomTally>;
+  lociCount: (roomId: string) => number;
+  onPick: (roomId: string) => void;
+}) {
+  return (
+    <>
+      {rooms.map((r) => {
+        const o = roomOffset(r, origin);
+        const t = tally?.[r.id];
+        const here = r.id === currentId;
+        const n = lociCount(r.id);
+        return (
+          <Html key={r.id} center position={toScene({ x: o.x + r.width / 2, y: r.height + 0.2, z: o.z + r.depth / 2 })} zIndexRange={[20, 0]}>
+            <button
+              type="button"
+              onClick={() => onPick(r.id)}
+              aria-label={here ? `${r.title} (you are here)` : `Go to ${r.title}`}
+              className={`whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold shadow-md transition-colors ${
+                here ? "bg-primary text-primary-foreground" : "bg-card text-foreground hover:bg-accent hover:text-accent-foreground"
+              }`}
+            >
+              {r.title}
+              <span className="ml-1.5 font-normal opacity-80">
+                {here ? "\u00b7 you are here" : t && t.due > 0 ? `\u00b7 ${t.due} due` : `\u00b7 ${n} loc${n === 1 ? "us" : "i"}`}
+              </span>
+            </button>
+          </Html>
+        );
+      })}
+    </>
+  );
+}
+
 // Flat chevron lying on the floor, pointing along +y in shape space (= north
 // after laying it down); the group's yaw turns it toward its target.
 const CHEVRON = (() => {
@@ -249,6 +355,7 @@ function NavChevrons({
     <>
       {arrows.map((a) => {
         const s = stops[a.stopIndex];
+        if (!s) return null; // arrows from the room you just left, until the next tick
         const color = a.role === "door" ? colors.door : a.role === "next" ? colors.locus : colors.locus;
         const label =
           s.kind === "door"
@@ -358,6 +465,25 @@ function Joystick({ joyRef, hidden = false }: { joyRef: React.MutableRefObject<M
   );
 }
 
+/** The whole palace, for walking it as one building. */
+export interface WalkWorld {
+  rooms: Room[];
+  openings: Opening[];
+  loci: Locus[];
+  /** Level that rooms with a null level_id belong to. */
+  fallbackLevelId?: string | null;
+  /** Cards / due per room, shown on the overview labels. */
+  tally?: Record<string, RoomTally>;
+}
+
+/** A room a palace tour can continue to. */
+export interface NextRoom {
+  id: string;
+  title: string;
+  due: number;
+  cards: number;
+}
+
 export interface WalkViewProps {
   room: Room;
   loci: Locus[];
@@ -393,6 +519,16 @@ export interface WalkViewProps {
    * `undefined` = still loading (an auto tour waits for it), `null` = none.
    */
   cardOrder?: string[] | null;
+  /**
+   * The whole palace. Rooms on this level are drawn around you, doors open
+   * into them, and walking through one carries straight on: the parent swaps
+   * `room` (and its loci/openings/cards) in `onEnterRoom`, no remount.
+   */
+  world?: WalkWorld | null;
+  /** You walked or travelled into another room of `world`. */
+  onEnterRoom?: (roomId: string) => void;
+  /** Where a finished room tour continues: next room with due cards, or with any cards (walkthrough). */
+  nextRooms?: { due: NextRoom | null; any: NextRoom | null } | null;
   className?: string;
 }
 
@@ -412,6 +548,9 @@ export default function WalkView({
   autoTour = false,
   intro = false,
   cardOrder,
+  world = null,
+  onEnterRoom,
+  nextRooms = null,
   className = "h-dvh",
 }: WalkViewProps) {
   const colors = useSceneColors();
@@ -441,9 +580,12 @@ export default function WalkView({
   const [fx, setFx] = useState(true);
   // Furniture the tour camera must not stand in or look through.
   const sight = useMemo(() => blockers(furnitureOf(room), room.height), [room]);
-  const introRef = useRef(
-    intro && !(typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) ? 0 : 1
+  const reducedMotion = useMemo(
+    () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+    []
   );
+  const aerialRef = useRef<Aerial>({ p: intro && !reducedMotion ? 1 : 0, target: 0 });
+  const [overview, setOverview] = useState(false);
   const inputRef = useRef<MoveInput>({ throttle: 0, strafe: 0 });
   const joyRef = useRef<MoveInput>({ throttle: 0, strafe: 0 });
   const lookRef = useRef({ yawDelta: 0, pitchDelta: 0 });
@@ -455,45 +597,177 @@ export default function WalkView({
   const [revealedCards, setRevealedCards] = useState<Record<string, boolean>>({});
   const [nearDoor, setNearDoor] = useState<Opening | null>(null);
   const [outside, setOutside] = useState(false);
+  const [tour, setTour] = useState<{ index: number; revealed: boolean; results: Record<string, boolean> } | null>(null);
+  // A running tour keeps the order it started with: a late review fetch or a
+  // card refetch must never reshuffle the stops under the learner.
+  const [tourStops, setTourStops] = useState<Stop[] | null>(null);
+  const [summary, setSummary] = useState<{ got: number; total: number; href?: string | null } | null>(null);
+  const [navIndex, setNavIndex] = useState(-1);
+  const [arrows, setArrows] = useState<NavArrow[]>([]);
 
-  // Parents remount this component per room (key={room.id}) so the spawn pose applies.
+  // ---------------------------------------------------------------- one building
+  // With `world`, every room on this level is drawn in this room's frame and
+  // doors lead straight into them. Changing room swaps the `room` prop (no
+  // remount): per-room state resets here, the pose is carried or respawned
+  // in the layout effect below.
+  const [roomKey, setRoomKey] = useState(room.id);
+  if (roomKey !== room.id) {
+    setRoomKey(room.id);
+    setNavIndex(-1);
+    setArrows([]);
+    setTour(null);
+    setTourStops(null);
+    setSummary(null);
+    setFocusedId(null);
+    setDismissedId(null);
+    setRevealedCards({});
+    setNearDoor(null);
+    setPulse(null);
+    setOutside(false);
+    setOverview(false);
+  }
+  const levelRooms = useMemo(() => {
+    if (!world) return [room];
+    return [room, ...sameLevel(world.rooms, room, world.fallbackLevelId ?? null).filter((r) => r.id !== room.id)];
+  }, [world, room]);
+  const neighbours = useMemo(
+    () =>
+      world
+        ? levelRooms.slice(1).map((r) => ({
+            room: r,
+            offset: roomOffset(r, room),
+            openings: world.openings.filter((o) => o.room_id === r.id),
+            loci: world.loci.filter((l) => l.room_id === r.id),
+          }))
+        : [],
+    [world, levelRooms, room]
+  );
+  const shared = useMemo(() => new Map(levelRooms.map((r) => [r.id, sharedSpans(r, levelRooms)])), [levelRooms]);
+  const twinFramed = useMemo(
+    () => (world ? twinFramedOpenings([...openings, ...world.openings.filter((o) => o.room_id !== room.id)]) : undefined),
+    [world, openings, room.id]
+  );
+  const overhead = useMemo(
+    () => aerialView(levelRooms, room, AERIAL_PITCH, AERIAL_FOV) ?? { x: room.width / 2, z: room.depth / 2, h: 10 },
+    [levelRooms, room]
+  );
+
+  /** Set just before asking the parent to swap rooms: carry the pose across a doorway. */
+  const carryRef = useRef<{ roomId: string; from: Room } | null>(null);
+  const prevRoomRef = useRef(room);
+  useLayoutEffect(() => {
+    const prev = prevRoomRef.current;
+    prevRoomRef.current = room;
+    if (prev.id === room.id) return;
+    glideRef.current = null;
+    const carry = carryRef.current?.roomId === room.id ? carryRef.current : null;
+    carryRef.current = null;
+    if (carry) {
+      // Same spot in the world, re-expressed in the new room's frame.
+      poseRef.current = carryPose(poseRef.current, carry.from, room);
+      return;
+    }
+    // A jump (overview, minimap, next room): come in through the door from
+    // where you were if there is one, else the middle, descending from the air.
+    const back = returnDoor(openings, room.id, prev.id);
+    poseRef.current = { ...(back ? spawnAtDoor(back, room) : spawnPose(room)), pitch: NAV_PITCH };
+    aerialRef.current = reducedMotion ? { p: 0, target: 0 } : { p: Math.max(aerialRef.current.p, 1), target: 0 };
+  }, [room, openings, reducedMotion]);
+
+  const enterRoom = useCallback(
+    (targetId: string, mode: "carry" | "fly") => {
+      carryRef.current = mode === "carry" ? { roomId: targetId, from: room } : null;
+      onEnterRoom?.(targetId);
+    },
+    [room, onEnterRoom]
+  );
+  /** Tour to start as soon as this room (id) is entered and its stops are known. */
+  const pendingTourRef = useRef<string | null>(autoTour ? room.id : null);
+
+  const setAerial = useCallback((on: boolean) => {
+    setOverview(on);
+    aerialRef.current.target = on ? 1 : 0;
+    if (on) glideRef.current = null;
+  }, []);
+
+  /**
+   * Go to another room of the palace: through the connecting door if there is
+   * one (glide to it, through it, carry on), else down from the air.
+   */
+  const travelTo = useCallback(
+    (targetId: string, opts?: { tour?: boolean }) => {
+      if (!world || !onEnterRoom || !world.rooms.some((r) => r.id === targetId)) {
+        onGoRoom?.(targetId);
+        return;
+      }
+      if (opts?.tour) pendingTourRef.current = targetId;
+      if (targetId === room.id) {
+        setAerial(false);
+        return;
+      }
+      setTour(null);
+      setSummary(null);
+      const door = doorBetween(openings, room.id, targetId);
+      const airborne = aerialRef.current.p > 0 || aerialRef.current.target === 1;
+      if (door && !airborne && levelRooms.some((r) => r.id === targetId)) {
+        const { approach, through } = doorPassage(door, room);
+        glideRef.current = { from: { ...poseRef.current }, to: approach, next: through, t: 0, onDone: () => enterRoom(targetId, "carry") };
+        return;
+      }
+      setOverview(false);
+      enterRoom(targetId, "fly");
+    },
+    [world, onEnterRoom, onGoRoom, room, openings, levelRooms, enterRoom, setAerial]
+  );
+
+  /** Walked out through a linked door: carry on into that room, or let the parent navigate. */
+  const handleExit = useCallback(
+    (o: Opening) => {
+      const t = o.target_room_id;
+      if (t && onEnterRoom && levelRooms.some((r) => r.id === t)) enterRoom(t, "carry");
+      else onExitDoor?.(o);
+    },
+    [onEnterRoom, levelRooms, enterRoom, onExitDoor]
+  );
+  /** "Go to <room>" at a door, or stepping again at a door stop. */
+  const walkThrough = useCallback(
+    (o: Opening) => {
+      if (o.target_room_id && onEnterRoom && levelRooms.some((r) => r.id === o.target_room_id)) travelTo(o.target_room_id);
+      else onExitDoor?.(o);
+    },
+    [onEnterRoom, levelRooms, travelTo, onExitDoor]
+  );
 
   const items = useMemo(() => toWorldLoci(loci, room), [loci, room]);
   // Tour queue: canonical traversal order, or due-first when the caller
   // passes a card order and the player picks it. Same semantics as the 2D
   // study session (lib/srs.ts sortPlayQueue), so both agree.
   const [tourMode, setTourMode] = useState<"due" | "walk">("due");
-  const liveStops = useMemo<Stop[]>(() => {
-    const base = buildTourStops(loci, cards);
-    if (tourMode === "due" && cardOrder && cardOrder.length > 0) return orderTourStopsByCards(base, cardOrder);
-    return base;
-  }, [loci, cards, tourMode, cardOrder]);
-
-  function switchTourMode(next: "due" | "walk") {
-    if (next === tourMode) return;
-    setTourMode(next);
-    setTour(null);
-    setSummary(null);
-  }
+  const stopsFor = useCallback(
+    (mode: "due" | "walk"): Stop[] => {
+      const base = buildTourStops(loci, cards);
+      return mode === "due" && cardOrder && cardOrder.length > 0 ? orderTourStopsByCards(base, cardOrder) : base;
+    },
+    [loci, cards, cardOrder]
+  );
+  const liveStops = useMemo<Stop[]>(() => stopsFor(tourMode), [stopsFor, tourMode]);
 
   // ---------------------------------------------------------------- street-view navigation
   // Stops = loci in study order, then linked doors. Floor chevrons point at the
   // next/previous stop and at every linked door; click one (or ↑/→, ↓/←) to glide there.
   const nav = useMemo(() => navStops(loci, openings), [loci, openings]);
-  const [navIndex, setNavIndex] = useState(-1);
-  const [arrows, setArrows] = useState<NavArrow[]>([]);
   const goStop = useCallback(
     (i: number) => {
       const st = nav[i];
       if (!st) return;
       if (st.kind === "door" && i === navIndex) {
-        onExitDoor?.(st.opening); // already at this door: walk through
+        walkThrough(st.opening); // already at this door: walk through
         return;
       }
       setNavIndex(i);
       glideRef.current = { from: { ...poseRef.current }, to: stopPose(st, room, sight), t: 0, locusId: st.kind === "locus" ? st.locus.id : undefined };
     },
-    [nav, navIndex, room, onExitDoor, sight]
+    [nav, navIndex, room, walkThrough, sight]
   );
   const stepNav = useCallback(
     (dir: 1 | -1) => {
@@ -535,12 +809,7 @@ export default function WalkView({
   }, [levelPlan]);
 
   // ---------------------------------------------------------------- tour
-  const [tour, setTour] = useState<{ index: number; revealed: boolean; results: Record<string, boolean> } | null>(null);
-  // A running tour keeps the order it started with: a late review fetch or a
-  // card refetch must never reshuffle the stops under the learner.
-  const [tourStops, setTourStops] = useState<Stop[] | null>(null);
   const stops = tour && tourStops ? tourStops : liveStops;
-  const [summary, setSummary] = useState<{ got: number; total: number; href?: string | null } | null>(null);
   const stop = tour ? stops[tour.index] ?? null : null;
 
   const glideTo = useCallback(
@@ -554,14 +823,22 @@ export default function WalkView({
     [room, sight]
   );
 
-  const startTour = useCallback(() => {
-    if (liveStops.length === 0) return;
-    setSummary(null);
-    setRevealedCards({});
-    setTourStops(liveStops);
-    setTour({ index: 0, revealed: false, results: {} });
-    glideTo(liveStops[0]);
-  }, [liveStops, glideTo]);
+  // Picking an order starts the tour in that order straight away.
+  const startTour = useCallback(
+    (mode?: "due" | "walk") => {
+      const m = mode ?? tourMode;
+      const s = stopsFor(m);
+      if (s.length === 0) return;
+      setTourMode(m);
+      setAerial(false);
+      setSummary(null);
+      setRevealedCards({});
+      setTourStops(s);
+      setTour({ index: 0, revealed: false, results: {} });
+      glideTo(s[0]);
+    },
+    [tourMode, stopsFor, glideTo, setAerial]
+  );
 
   // Tour end: show the local summary now, persist the session + answers in
   // the background so the full /results summary can be linked when it lands.
@@ -583,7 +860,7 @@ export default function WalkView({
           roomTitle: room.title,
           locusId: s.locus.id,
           locusLabel: s.locus.label,
-          label: cardFront(s.card!).slice(0, 200),
+          label: stripMarkdown(cardFront(s.card!)).slice(0, 200),
         }));
       void Promise.resolve(onTourComplete(answers, got, graded.length))
         .then((href) => href && setSummary((prev) => (prev ? { ...prev, href } : prev)))
@@ -640,20 +917,18 @@ export default function WalkView({
     [tour, stop, mcq, grade]
   );
 
-  const autoStarted = useRef(false);
   useEffect(() => {
     // Wait for the due order to settle so the tour doesn't start in walk order.
-    if (autoTour && !autoStarted.current && liveStops.length > 0 && cardOrder !== undefined) {
-      autoStarted.current = true;
-      startTour();
-    }
-  }, [autoTour, liveStops.length, cardOrder, startTour]);
+    if (pendingTourRef.current !== room.id || cardOrder === undefined || stopsFor(tourMode).length === 0) return;
+    pendingTourRef.current = null;
+    startTour();
+  }, [room.id, cardOrder, stopsFor, tourMode, startTour]);
 
   // ---------------------------------------------------------------- input
-  const tourRef = useRef({ tour, stop, goto, grade, startTour, stepNav, choose, mcq });
+  const tourRef = useRef({ tour, stop, goto, grade, startTour, stepNav, choose, mcq, overview, setAerial });
   useEffect(() => {
-    tourRef.current = { tour, stop, goto, grade, startTour, stepNav, choose, mcq };
-  }, [tour, stop, goto, grade, startTour, stepNav, choose, mcq]);
+    tourRef.current = { tour, stop, goto, grade, startTour, stepNav, choose, mcq, overview, setAerial };
+  }, [tour, stop, goto, grade, startTour, stepNav, choose, mcq, overview, setAerial]);
   useEffect(() => {
     const syncKeys = () => {
       const k = keysRef.current;
@@ -665,7 +940,7 @@ export default function WalkView({
     const down = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
-      const { tour: tr, stop: st, goto: go, grade: gr, startTour: start, stepNav: step, choose: ch, mcq: mq } = tourRef.current;
+      const { tour: tr, stop: st, goto: go, grade: gr, startTour: start, stepNav: step, choose: ch, mcq: mq, overview: ov, setAerial: air } = tourRef.current;
       if (tr) {
         // Tour keys: Space/Enter reveal, ←/→ step, 1-4 answer MCQ, 1 = Missed / 2 = Got it (left/right button), Esc leave.
         if (e.code === "Space" || e.code === "Enter") {
@@ -685,6 +960,14 @@ export default function WalkView({
         } else if (tr.revealed && st?.card && (e.key === "1" || e.key === "2")) {
           gr(e.key === "2");
         }
+        return;
+      }
+      if (e.code === "KeyO") {
+        air(!ov);
+        return;
+      }
+      if (ov) {
+        if (e.code === "Escape") air(false);
         return;
       }
       if (e.code === "KeyT") {
@@ -732,17 +1015,24 @@ export default function WalkView({
   }, [tour]);
 
   // Headless test hook: ?debug=1 exposes pose/focus/teleport on window.
+  // Read once: walking on rewrites the address (dropping ?debug).
+  const [debug] = useState(() => typeof window !== "undefined" && window.location.search.includes("debug"));
   useEffect(() => {
-    if (!window.location.search.includes("debug")) return;
+    if (!debug) return;
     (window as unknown as { __walk: unknown }).__walk = {
       pose: () => poseRef.current,
-      introDone: () => introRef.current >= 1,
+      introDone: () => aerialRef.current.p === 0 && aerialRef.current.target === 0,
+      aerial: () => aerialRef.current.p,
+      room: () => room.id,
+      /** Rooms drawn in the scene (this one first, then the rest of its level). */
+      drawn: () => levelRooms.map((r) => r.id),
+      overview: (on: boolean) => setAerial(on),
       focused: () => focusedId,
       teleport: (x: number, z: number, yaw = 0, pitch = 0) => {
         poseRef.current = { x, z, yaw, pitch };
       },
     };
-  }, [focusedId]);
+  }, [debug, focusedId, room.id, levelRooms, setAerial]);
 
   useEffect(() => {
     const t = window.setInterval(() => setOutside(isOutside(poseRef.current, room)), 300);
@@ -790,6 +1080,9 @@ export default function WalkView({
   const focusedNumber = focused ? stops.find((s) => s.locus.id === focused.locus.id)?.locusIndex ?? 0 : 0;
   const lociCount = new Set(stops.map((s) => s.locus.id)).size;
   const targetTitle = nearDoor?.target_room_id ? roomTitles[nearDoor.target_room_id] ?? "next room" : null;
+  // Where a palace tour continues once this room is done.
+  const nextRoomRaw = nextRooms ? (tourMode === "walk" ? (nextRooms.any ?? nextRooms.due) : nextRooms.due) : null;
+  const nextRoom = nextRoomRaw && nextRoomRaw.id !== room.id ? nextRoomRaw : null;
 
   // Minimap: the n-th locus (study order) is the same locus as nav stop / tour stop n.
   const mapLocusId = (n: number) => tourOrder(loci)[n - 1]?.id;
@@ -829,7 +1122,7 @@ export default function WalkView({
           <Canvas
             dpr={dpr}
             gl={{ antialias: true, powerPreference: "high-performance", failIfMajorPerformanceCaveat: false }}
-            camera={{ fov: 62, near: 0.05, far: 120 }}
+            camera={{ fov: WALK_FOV, near: 0.05, far: 120 }}
           >
           {/* Adaptive quality: drop resolution, then the post effects, if frames sag. */}
           <PerformanceMonitor
@@ -843,7 +1136,24 @@ export default function WalkView({
           <fog attach="fog" args={[colors.fog, 12, 40]} />
           <SceneSky colors={colors} radius={100} />
           <SceneLights colors={colors} />
-          <RoomShell room={room} openings={openings} colors={colors} animateDoors />
+          <RoomShell room={room} openings={openings} colors={colors} animateDoors shared={shared.get(room.id)} twinFramed={twinFramed} />
+          {/* The rest of the level, in this room's frame: doors open onto real rooms. */}
+          {neighbours.map((n) => (
+            <group key={n.room.id} position={toScene({ x: n.offset.x, y: 0, z: n.offset.z })}>
+              <RoomShell room={n.room} openings={n.openings} colors={colors} animateDoors shared={shared.get(n.room.id)} twinFramed={twinFramed} />
+              <LocusMarkers room={n.room} loci={n.loci} colors={colors} showPath={false} showLabels={false} />
+            </group>
+          ))}
+          {overview && (
+            <OverviewLabels
+              rooms={levelRooms}
+              origin={room}
+              currentId={room.id}
+              tally={world?.tally}
+              lociCount={(id: string) => (id === room.id ? loci.length : (world?.loci.filter((l) => l.room_id === id).length ?? 0))}
+              onPick={(id: string) => (id === room.id ? setAerial(false) : travelTo(id))}
+            />
+          )}
           <FloorShadows width={room.width} depth={room.depth} />
           <LocusMarkers
             room={room}
@@ -860,8 +1170,8 @@ export default function WalkView({
               goToLocus(locus.id);
             }}
           />
-          <DoorSigns room={room} openings={openings} roomTitles={roomTitles} />
-          {!tour && <NavChevrons arrows={arrows} stops={nav} roomTitles={roomTitles} colors={colors} onGo={goStop} />}
+          {!overview && <DoorSigns room={room} openings={openings} roomTitles={roomTitles} />}
+          {!tour && !overview && <NavChevrons arrows={arrows} stops={nav} roomTitles={roomTitles} colors={colors} onGo={goStop} />}
           <PlayerRig
             room={room}
             openings={openings}
@@ -871,11 +1181,12 @@ export default function WalkView({
             joyRef={joyRef}
             lookRef={lookRef}
             glideRef={glideRef}
-            frozen={!!tour}
-            introRef={introRef}
+            frozen={!!tour || overview}
+            aerialRef={aerialRef}
+            overhead={overhead}
             onArrive={arrive}
             onFocus={handleFocus}
-            onExit={(o) => onExitDoor?.(o)}
+            onExit={handleExit}
             onNearDoor={setNearDoor}
           />
           {fx && <SceneFX lite={coarse} />}
@@ -919,29 +1230,47 @@ export default function WalkView({
           )}
         </div>
         <div className="pointer-events-auto flex flex-wrap gap-2">
-          {!tour && cardOrder && cardOrder.length > 0 && (
-            <div className="flex overflow-hidden rounded-xl border border-border bg-card" role="group" aria-label="Tour order">
+          {/* Each order starts its tour straight away (a mode toggle that did nothing until
+              a second click read as broken). */}
+          {!tour && !overview && stops.length > 0 && (
+            <div className="flex gap-2" role="group" aria-label="Start a tour">
+              {cardOrder && cardOrder.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => startTour("due")}
+                  className="btn-primary max-sm:!px-3 max-sm:!py-1.5"
+                  title="Tour this room's cards, the ones due for review first (T)"
+                >
+                  {"\u25B6"} Due first
+                </button>
+              )}
               <button
                 type="button"
-                onClick={() => switchTourMode("due")}
-                aria-pressed={tourMode === "due"}
-                className={`px-3 py-2 text-sm font-medium max-sm:px-2.5 max-sm:py-1.5 ${tourMode === "due" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                onClick={() => startTour("walk")}
+                className={`${cardOrder && cardOrder.length > 0 ? "btn-outline bg-card" : "btn-primary"} max-sm:!px-3 max-sm:!py-1.5`}
+                title="Tour every locus in order, start to finish"
               >
-                Due first
-              </button>
-              <button
-                type="button"
-                onClick={() => switchTourMode("walk")}
-                aria-pressed={tourMode === "walk"}
-                className={`px-3 py-2 text-sm font-medium max-sm:px-2.5 max-sm:py-1.5 ${tourMode === "walk" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                Walkthrough
+                <Footprints className="h-4 w-4" aria-hidden /> <span className="max-sm:sr-only">Walkthrough</span>
               </button>
             </div>
           )}
-          {!tour && stops.length > 0 && (
-            <button type="button" onClick={startTour} className="btn-primary max-sm:!px-3 max-sm:!py-1.5">
-              {"\u25B6"} Start tour
+          {!tour && (
+            <button
+              type="button"
+              onClick={() => setAerial(!overview)}
+              aria-pressed={overview}
+              className={`${overview ? "btn-primary" : "btn-outline bg-card"} max-sm:!px-3 max-sm:!py-1.5`}
+              title={overview ? "Back down to eye level (Esc)" : "See the whole floor from above (O)"}
+            >
+              {overview ? (
+                <>
+                  <Footprints className="h-4 w-4" aria-hidden /> Back to walking
+                </>
+              ) : (
+                <>
+                  <Building2 className="h-4 w-4" aria-hidden /> <span className="max-sm:sr-only">Overview</span>
+                </>
+              )}
             </button>
           )}
           {tour && (
@@ -962,14 +1291,14 @@ export default function WalkView({
             activeLocusN={activeLocusN}
             roomTitles={roomTitles}
             onGoLocus={goMapLocus}
-            onGoRoom={onGoRoom}
+            onGoRoom={world && onEnterRoom ? (id) => travelTo(id) : onGoRoom}
           />
         </div>
       )}
 
-      {nearDoor && targetTitle && !tour && onExitDoor && (
+      {nearDoor && targetTitle && !tour && !overview && (onExitDoor || onEnterRoom) && (
         <div className="pointer-events-none absolute inset-x-0 top-24 flex justify-center">
-          <button type="button" onClick={() => onExitDoor(nearDoor)} className="btn-primary pointer-events-auto shadow-lg">
+          <button type="button" onClick={() => walkThrough(nearDoor)} className="btn-primary pointer-events-auto shadow-lg">
             Go to {targetTitle} {"\u2192"}
           </button>
         </div>
@@ -1006,7 +1335,7 @@ export default function WalkView({
                     {mcq.choices.map((choice, i) => (
                       <button key={i} type="button" onClick={() => choose(i)} className="btn-outline justify-start !py-2.5 text-left">
                         <kbd className="mr-2 rounded bg-muted px-1.5 text-[10px]">{i + 1}</kbd>
-                        {choice}
+                        <Markdown inline text={choice} />
                       </button>
                     ))}
                     <p className="text-sm text-muted-foreground">Picture it at this spot, then choose.</p>
@@ -1053,23 +1382,39 @@ export default function WalkView({
         </div>
       )}
 
-      {summary && !tour && (
+      {summary && !tour && !overview && (
         <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center p-4">
-          <div className="card-base pointer-events-auto w-full max-w-sm p-5 text-center">
-            <p className="text-lg font-semibold">Tour complete</p>
+          <div className="card-base pointer-events-auto w-full max-w-md p-5 text-center" role="dialog" aria-label="Tour complete">
+            <p className="text-lg font-semibold">{room.title}: tour complete</p>
             <p className="mt-1 text-sm text-muted-foreground">
               {summary.total > 0 ? `You recalled ${summary.got} of ${summary.total} cards.` : "You walked every locus."}
             </p>
-            <div className="mt-4 flex justify-center gap-2">
+            {nextRoom ? (
+              <p className="mt-2 text-sm">
+                Next: <span className="font-semibold">{nextRoom.title}</span>
+                <span className="text-muted-foreground">
+                  {" \u00b7 "}
+                  {nextRoom.due > 0 ? `${nextRoom.due} due` : `${nextRoom.cards} card${nextRoom.cards === 1 ? "" : "s"}`}
+                </span>
+              </p>
+            ) : (
+              nextRooms && <p className="mt-2 text-sm text-muted-foreground">That was the last room with cards due: the palace is clear.</p>
+            )}
+            <div className="mt-4 flex flex-wrap justify-center gap-2">
+              {nextRoom && (
+                <button type="button" className="btn-primary" onClick={() => travelTo(nextRoom.id, { tour: true })}>
+                  Continue to {nextRoom.title} {"\u2192"}
+                </button>
+              )}
               {summary.href && (
-                <Link href={summary.href} className="btn-primary">
+                <Link href={summary.href} className={nextRoom ? "btn-outline" : "btn-primary"}>
                   Full summary
                 </Link>
               )}
-              <button type="button" className={summary.href ? "btn-outline" : "btn-primary"} onClick={startTour}>
+              <button type="button" className={summary.href || nextRoom ? "btn-outline" : "btn-primary"} onClick={() => startTour()}>
                 Tour again
               </button>
-              <button type="button" className="btn-outline" onClick={() => setSummary(null)}>
+              <button type="button" className="btn-ghost" onClick={() => setSummary(null)}>
                 Walk freely
               </button>
             </div>
@@ -1115,7 +1460,7 @@ export default function WalkView({
         </div>
       )}
 
-      <Joystick joyRef={joyRef} hidden={cardOpen} />
+      <Joystick joyRef={joyRef} hidden={cardOpen || overview} />
     </div>
   );
 }

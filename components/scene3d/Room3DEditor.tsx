@@ -15,6 +15,8 @@ import ImportFromDeck from "@/components/decks/ImportFromDeck";
 import SendToDeck from "@/components/decks/SendToDeck";
 import MiniMap from "./MiniMap";
 import type { Blueprint } from "@/lib/blueprint";
+import Markdown from "@/components/Markdown";
+import MarkdownEditor from "@/components/MarkdownEditor";
 
 const WALL_NAMES: Record<WallFace, string> = { north: "North", south: "South", east: "East", west: "West" };
 
@@ -652,8 +654,8 @@ function LocusDetails({
         {cards.map((c, ci) =>
           editing?.id === c.id ? (
             <div key={c.id} className="space-y-1 rounded-xl border border-border p-2">
-              <input aria-label="Card front" className="input-base" value={editing.front} onChange={(e) => setEditing({ ...editing, front: e.target.value })} />
-              <textarea aria-label="Card back" className="input-base min-h-16" value={editing.back} onChange={(e) => setEditing({ ...editing, back: e.target.value })} />
+              <MarkdownEditor compact label="Card front" minRows={1} value={editing.front} onChange={(v) => setEditing({ ...editing, front: v })} />
+              <MarkdownEditor compact label="Card back" value={editing.back} onChange={(v) => setEditing({ ...editing, back: v })} />
               <input aria-label="Card wrong answers" className="input-base" placeholder="Wrong answers, comma-separated, up to 3" value={editing.options} onChange={(e) => setEditing({ ...editing, options: e.target.value })} />
               <div className="flex gap-2">
                 <button type="button" className="btn-primary px-3 py-1 text-sm" disabled={busy || !editing.front.trim()} onClick={() => onUpdateCard(c.id, editing.front, editing.back, splitOptions(editing.options)).then(() => setEditing(null))}>
@@ -671,8 +673,8 @@ function LocusDetails({
                   {ci + 1}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="font-medium">{cardFront(c)}</p>
-                  <p className="text-muted-foreground">{cardBack(c)}</p>
+                  <Markdown className="font-medium" text={cardFront(c)} />
+                  <Markdown className="text-muted-foreground" text={cardBack(c)} />
                 </div>
               </div>
               <div className="mt-1 flex gap-3 text-xs">
@@ -715,8 +717,8 @@ function LocusDetails({
             });
           }}
         >
-          <input aria-label="New card front" className="input-base" placeholder="Front (prompt)" value={front} onChange={(e) => setFront(e.target.value)} />
-          <textarea aria-label="New card back" className="input-base min-h-16" placeholder="Back (answer)" value={back} onChange={(e) => setBack(e.target.value)} />
+          <MarkdownEditor compact label="New card front" placeholder="Front (prompt)" minRows={1} value={front} onChange={setFront} />
+          <MarkdownEditor compact label="New card back" placeholder="Back (answer)" value={back} onChange={setBack} />
           <input aria-label="New card wrong answers" className="input-base" placeholder="Wrong answers, comma-separated, up to 3 (optional)" value={options} onChange={(e) => setOptions(e.target.value)} />
           <button type="submit" className="btn-primary w-full py-1.5 text-sm" disabled={busy || !front.trim()}>
             Add card

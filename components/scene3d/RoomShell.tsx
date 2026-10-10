@@ -11,13 +11,17 @@ import type { SceneColors } from "./useSceneColors";
 import { isHallway } from "@/lib/hallway";
 import { furnitureOf, type FurnitureItem } from "@/lib/furniture";
 import { RoomFurniture } from "./Furniture";
+import { inSpans, splitSpan, type Span } from "@/lib/building";
 
 // Shared 3D room geometry for the room editor, the palace preview and walk
 // mode. Everything is authored in world coords and placed with toScene()
 // (z negated) so the 3D room matches the 2D plan instead of mirroring it.
 
 export const WALL_THICK = 0.16;
+/** A wall shared with a neighbour is drawn as a thin skin on each side (no wall pokes into the next room). */
+export const WALL_SKIN = 0.02;
 const noRaycast = () => null;
+const tmpV = new THREE.Vector3();
 
 export interface WallPointerEvent {
   wall: WallFace;
@@ -112,8 +116,10 @@ function DoorLeaf({
     if (!p) return;
     let target = 1;
     if (animate) {
-      const dx = camera.position.x - center[0];
-      const dz = camera.position.z - center[2];
+      // The room may be drawn offset (a neighbour in walk mode): measure in world space.
+      const c = p.parent ? p.parent.localToWorld(tmpV.set(center[0], center[1], center[2])) : tmpV.set(center[0], center[1], center[2]);
+      const dx = camera.position.x - c.x;
+      const dz = camera.position.z - c.z;
       target = dx * dx + dz * dz < 2.6 * 2.6 ? 1 : 0;
     }
     open.current += (target - open.current) * Math.min(1, dt * 3.5);
@@ -152,6 +158,8 @@ export function RoomShell({
   onFurnitureDown,
   onFurnitureClick,
   animateDoors = false,
+  shared,
+  twinFramed,
 }: {
   room: Room;
   openings: Opening[];
@@ -170,14 +178,21 @@ export function RoomShell({
   onFurnitureClick?: (item: FurnitureItem, e: ThreeEvent<MouseEvent>) => void;
   /** Walk mode: door leaves swing open as the camera approaches and close behind it. */
   animateDoors?: boolean;
+  /** Stretches of wall shared with a neighbour drawn alongside (lib/building sharedSpans). */
+  shared?: Partial<Record<WallFace, Span[]>>;
+  /** Linked doors whose frame and leaf the room on the other side draws (lib/building twinFramedOpenings). */
+  twinFramed?: ReadonlySet<string>;
 }) {
   const size = { width: room.width, depth: room.depth };
+  const root = useRef<THREE.Group>(null);
   const wallRefs = useRef<Partial<Record<WallFace, THREE.Group | null>>>({});
   const lastCut = useRef<string>("");
 
   useFrame(({ camera }) => {
     if (!cutaway) return;
-    const cam = fromScene(camera.position);
+    // Camera in this room's own frame (the room may sit offset on a level).
+    const local = root.current ? root.current.worldToLocal(tmpV.copy(camera.position)) : camera.position;
+    const cam = fromScene(local);
     const cut = cutawayWalls(cam, room);
     const key = [...cut].sort().join(",");
     if (key === lastCut.current) return;
@@ -212,11 +227,21 @@ export function RoomShell({
   // light and dark. Hallways get a cooler, path-coloured floor.
   const hallway = isHallway(room);
   const palette = useMemo(() => roomPalette(room, colors, hallway), [room, colors, hallway]);
-  const floorTex = useFloorTexture(palette.floor, room.width + WALL_THICK, room.depth + WALL_THICK);
+  // The floor runs under the exterior walls, but stops at shared ones (the
+  // neighbour's floor continues there; overlapping floors would flicker).
+  const floor = useMemo(() => {
+    const ext = (wall: WallFace) => (shared?.[wall]?.length ? 0 : WALL_THICK / 2);
+    const x0 = -ext("west");
+    const x1 = room.width + ext("east");
+    const z0 = -ext("south");
+    const z1 = room.depth + ext("north");
+    return { x: (x0 + x1) / 2, z: (z0 + z1) / 2, w: x1 - x0, d: z1 - z0 };
+  }, [room.width, room.depth, shared]);
+  const floorTex = useFloorTexture(palette.floor, floor.w, floor.d);
   const savedFurniture = useMemo(() => furnitureOf(room), [room]);
 
   return (
-    <group>
+    <group ref={root}>
       <RoomFurniture
         items={furniture ?? savedFurniture}
         roomHeight={room.height}
@@ -227,11 +252,11 @@ export function RoomShell({
         onItemClick={onFurnitureClick}
       />
       <mesh
-        position={toScene({ x: room.width / 2, y: -0.05, z: room.depth / 2 })}
+        position={toScene({ x: floor.x, y: -0.05, z: floor.z })}
         raycast={floorRaycast ? THREE.Mesh.prototype.raycast : noRaycast}
         onPointerMove={onFloorMove ? (e) => onFloorMove(fromScene(e.point)) : undefined}
       >
-        <boxGeometry args={[room.width + WALL_THICK, 0.1, room.depth + WALL_THICK]} />
+        <boxGeometry args={[floor.w, 0.1, floor.d]} />
         <meshStandardMaterial color="#ffffff" map={floorTex} roughness={0.75} />
       </mesh>
       {WALL_FACES.map((wall) => {
@@ -246,12 +271,16 @@ export function RoomShell({
               wallRefs.current[wall] = g;
             }}
           >
-            {spans.map((span, i) => {
-              const a = wallPoint(wall, span.from, size);
-              const b = wallPoint(wall, span.to, size);
+            {spans.flatMap((span) => splitSpan(span, shared?.[wall])).map((piece, i) => {
+              const a = wallPoint(wall, piece.from, size);
+              const b = wallPoint(wall, piece.to, size);
               const len = horizontal ? b.x - a.x : b.z - a.z;
               if (len <= 0.01) return null;
-              const mid = { x: (a.x + b.x) / 2 - (n.x * WALL_THICK) / 2, y: room.height / 2, z: (a.z + b.z) / 2 - (n.z * WALL_THICK) / 2 };
+              // Exterior walls stand outside the room's footprint; a shared stretch is a
+              // thin skin inside it, so the neighbour's own skin shows on the other side.
+              const thick = piece.shared ? WALL_SKIN : WALL_THICK;
+              const sign = piece.shared ? 1 : -1;
+              const mid = { x: (a.x + b.x) / 2 + (sign * n.x * thick) / 2, y: room.height / 2, z: (a.z + b.z) / 2 + (sign * n.z * thick) / 2 };
               return (
                 <mesh
                   key={`${wall}-${i}`}
@@ -260,7 +289,7 @@ export function RoomShell({
                   onClick={handler(wall, onWallClick)}
                   onPointerMove={handler(wall, onWallMove)}
                 >
-                  <boxGeometry args={horizontal ? [len, room.height, WALL_THICK] : [WALL_THICK, room.height, len]} />
+                  <boxGeometry args={horizontal ? [len, room.height, thick] : [thick, room.height, len]} />
                   <meshStandardMaterial color={palette.wall} roughness={0.85} />
                 </mesh>
               );
@@ -320,7 +349,16 @@ export function RoomShell({
               const c = wallPoint(wall, o.wall_offset ?? 0.5, size);
               const top = lintelHeight(o, room);
               const lintelH = room.height - top;
-              const base = { x: c.x - (n.x * WALL_THICK) / 2, z: c.z - (n.z * WALL_THICK) / 2 };
+              // In a shared wall the lintel is a skin like the wall around it, and the
+              // frame straddles the wall line (the twin room draws none of its own).
+              const inShared = inSpans(o.wall_offset ?? 0.5, shared?.[wall]);
+              const framed = !twinFramed?.has(o.id);
+              const lintelThick = inShared ? WALL_SKIN : WALL_THICK;
+              const lintelMid = {
+                x: c.x + ((inShared ? 1 : -1) * n.x * lintelThick) / 2,
+                z: c.z + ((inShared ? 1 : -1) * n.z * lintelThick) / 2,
+              };
+              const base = inShared ? { x: c.x, z: c.z } : { x: c.x - (n.x * WALL_THICK) / 2, z: c.z - (n.z * WALL_THICK) / 2 };
               const along = horizontal ? { x: 1, z: 0 } : { x: 0, z: 1 };
               const at = (a: number, inward: number, y: number) =>
                 toScene({ x: base.x + along.x * a + n.x * inward, y, z: base.z + along.z * a + n.z * inward });
@@ -330,12 +368,12 @@ export function RoomShell({
               return (
                 <group key={o.id}>
                   {lintelH > 0.02 && (
-                    <mesh position={toScene({ x: base.x, y: top + lintelH / 2, z: base.z })} raycast={noRaycast}>
-                      <boxGeometry args={horizontal ? [w, lintelH, WALL_THICK] : [WALL_THICK, lintelH, w]} />
+                    <mesh position={toScene({ x: lintelMid.x, y: top + lintelH / 2, z: lintelMid.z })} raycast={noRaycast}>
+                      <boxGeometry args={horizontal ? [w, lintelH, lintelThick] : [lintelThick, lintelH, w]} />
                       <meshStandardMaterial color={palette.wall} roughness={0.85} />
                     </mesh>
                   )}
-                  {o.kind === "door" && (
+                  {o.kind === "door" && framed && (
                     <>
                       {[-1, 1].map((side) => (
                         <mesh key={side} position={at(side * (w / 2 - J / 2), 0, top / 2)} raycast={noRaycast}>

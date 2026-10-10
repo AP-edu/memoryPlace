@@ -7,6 +7,7 @@ import { layoutBlueprint } from "@/lib/blueprint";
 import { tourOrder } from "@/lib/scene3d";
 import type { Card, Level, Locus, Opening, Palace, Room } from "@/types/database";
 import { cardBack, cardFront } from "@/types/database";
+import { stripMarkdown } from "@/lib/markdownEdit";
 
 interface RoomBundle {
   room: Room;
@@ -15,8 +16,8 @@ interface RoomBundle {
 }
 
 function cardLine(c: Card, answers: boolean): string {
-  const front = cardFront(c);
-  return answers && cardBack(c) ? `${front} → ${cardBack(c)}` : front;
+  const front = stripMarkdown(cardFront(c));
+  return answers && cardBack(c) ? `${front} → ${stripMarkdown(cardBack(c))}` : front;
 }
 
 // Printable blueprint (Phase G): clean black-on-white traversal-order

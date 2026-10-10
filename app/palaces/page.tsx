@@ -3,7 +3,9 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useFetch } from "@/hooks/useFetch";
+import Link from "next/link";
 import PalaceList from "@/components/palaces/PalaceList";
+import TemplateGallery from "@/components/explore/TemplateGallery";
 import type { HomeSummary } from "@/lib/homeSummary";
 import { PageSkeleton } from "@/components/ui/Skeleton";
 
@@ -32,6 +34,23 @@ export default function PalacesPage() {
         {summary.palaces.length === 1 ? "" : "s"} · {summary.totalCards} card{summary.totalCards === 1 ? "" : "s"}
       </p>
       <PalaceList palaces={summary.palaces} plans={summary.plans} onChanged={refetch} searchable />
+
+      <section className="mt-12" aria-labelledby="famous-places">
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <h2 id="famous-places" className="text-2xl font-semibold">
+              Start from a famous place
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Real buildings, ready to walk: rooms, doors, furniture and loci waiting for your cards. Reshape them however you like.
+            </p>
+          </div>
+          <Link href="/explore" className="btn-ghost">
+            About these places {"\u2192"}
+          </Link>
+        </div>
+        <TemplateGallery compact />
+      </section>
     </div>
   );
 }

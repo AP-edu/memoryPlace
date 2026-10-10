@@ -63,6 +63,19 @@ Order of delivery from the vision docs; each phase ends green on tsc + eslint +
   doors that open, arrival chime + pulse, bloom/vignette/contact shadows with
   adaptive quality, furniture-aware tour viewpoints. DONE (livecheck 39/39,
   60 fps on RTX 5050 and the iGPU incl. phone, 2026-10-10).
+- M. One building + famous places: walk mode draws every room on the level
+  (`lib/building.ts`: shared walls become a thin skin per side, a linked door
+  pair gets one frame + leaf), walking through a door carries the pose into
+  the next room with no remount (`components/walk/PalaceWalk.tsx` owns the
+  current room; URL follows via `history.replaceState`), bird's-eye Overview
+  (fly-in and overview share one aerial blend, long lens from the air), the
+  palace tour starts at the first room with due cards and continues room to
+  room; famous-place templates (`lib/templates.ts`, validated plans) walkable
+  signed out at `/explore` and built via `POST /api/palaces/from-template`;
+  trace a floor-plan image on the 2D blueprint (`lib/underlay.ts`, image in
+  IndexedDB only); markdown card editor with a toolbar (`MarkdownEditor`,
+  `lib/markdownEdit.ts`, GFM rendering). DONE (livecheck 45/45, 60 fps on RTX
+  5050 and the iGPU incl. phone and an 8-room villa, 2026-10-10).
 
 ## Geometry convention (Phase A, source of truth for B/F)
 
@@ -117,6 +130,17 @@ artifacts in `.livecheck/`). Add checks there when a phase adds UI.
   component. Room accents go through `lib/color.ts` (`accentFor`).
 - 3D convention: pure logic in `lib/` (see `lib/walk.ts`), R3F scenes kept
   separate — never mix scene code into geometry/logic modules
+- One building (Phase M): anything that draws several rooms together passes
+  `shared` (`sharedSpans`) and `twinFramed` (`twinFramedOpenings`) to
+  `RoomShell`, or neighbouring walls poke into each other. `WalkView` with
+  `world` + `onEnterRoom` never remounts per room: reset per-room state in
+  its room-change block, not with a `key`.
+- Card text is markdown everywhere it is shown (`components/Markdown.tsx`,
+  `inline` for one-line spots); use `stripMarkdown` where it can't render
+  (print, session labels). Author it with `MarkdownEditor`.
+- Templates (`lib/templates.ts`): furniture faces south at rot 0, west 90,
+  north 180, east 270. `lib/templates.test.ts` must pass for every place (no
+  overlaps, reachable rooms, clear doorways, visible loci).
 
 ## Machine split (laptop vs PC)
 

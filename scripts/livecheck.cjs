@@ -791,9 +791,15 @@ async function cleanup(userIds) {
       return `${target.label}: ${d0.toFixed(1)} m -> ${d1.toFixed(1)} m`;
     });
 
-    await check("walk: minimap door tap opens the next room", async () => {
+    const inRoom = (p, id, timeout = 10000) => p.waitForFunction((r) => window.__walk?.room() === r, id, { timeout });
+
+    await check("walk: minimap door tap walks through into the next room, no reload", async () => {
+      if (!page.url().includes(`/walk/${A.id}`)) await openWalk(page, A.id);
+      await page.evaluate(() => (window.__sameDoc = true));
       await page.locator(`${MAP} circle`).filter({ has: page.locator("title", { hasText: "Go to Library" }) }).click({ force: true });
-      await page.waitForURL(new RegExp(`/walk/${ids.B.id}`), { timeout: 10000 });
+      await inRoom(page, ids.B.id);
+      await page.waitForURL(new RegExp(`/walk/${ids.B.id}`), { timeout: 5000 });
+      assert(await page.evaluate(() => window.__sameDoc === true), "the page reloaded");
     });
 
     await check("walk: door prompt near the linked door walks through", async () => {
@@ -802,7 +808,40 @@ async function cleanup(userIds) {
       const go = page.getByRole("button", { name: /Go to Library/ });
       await go.waitFor({ timeout: 6000 });
       await go.click();
-      await page.waitForURL(new RegExp(`/walk/${ids.B.id}`), { timeout: 10000 });
+      await inRoom(page, ids.B.id);
+    });
+
+    await check("walk: one building — the next room is drawn past the door, walking through carries on", async () => {
+      await openWalk(page, A.id);
+      const drawn = await page.evaluate(() => window.__walk.drawn());
+      assert(drawn.includes(ids.B.id), `Library not drawn from the Atrium (${drawn.length} rooms)`);
+      await page.evaluate(() => {
+        window.__sameDoc = true;
+        window.__walk.teleport(4, 4.9, 0, 0);
+      });
+      await sleep(1200); // the door swings open
+      await shot(page, "walk-doorway");
+      await page.keyboard.down("KeyW");
+      await sleep(1300);
+      await page.keyboard.up("KeyW");
+      await inRoom(page, ids.B.id, 5000);
+      const pose = await page.evaluate(() => ({ ...window.__walk.pose() }));
+      // Same spot in the world: just inside the library's south wall, still facing north.
+      assert(pose.z > 0 && pose.z < 3 && Math.abs(pose.x - 4) < 0.5, `carried to ${pose.x.toFixed(2)}, ${pose.z.toFixed(2)}`);
+      assert(await page.evaluate(() => window.__sameDoc === true), "the page reloaded");
+      return `carried to (${pose.x.toFixed(2)}, ${pose.z.toFixed(2)}) in the Library`;
+    });
+
+    await check("walk: overview shows the whole floor; pick a room to fly down into it", async () => {
+      await openWalk(page, A.id);
+      await page.getByRole("button", { name: "Overview" }).click();
+      await page.waitForFunction(() => window.__walk.aerial() >= 1, null, { timeout: 5000 });
+      await page.getByRole("button", { name: "Atrium (you are here)" }).waitFor({ timeout: 3000 });
+      const st = await pixelStats(page, await page.locator("canvas").first().screenshot());
+      assert(st.colors > 20, "overview looks blank");
+      await shot(page, "walk-overview");
+      await page.getByRole("button", { name: "Go to Library", exact: true }).click();
+      await page.waitForFunction((b) => window.__walk.room() === b && window.__walk.aerial() === 0, ids.B.id, { timeout: 8000 });
     });
 
     await check("study: each card shows its locus and room on the level map", async () => {
@@ -846,13 +885,14 @@ async function cleanup(userIds) {
       return `first stop ${label}, camera facing it`;
     });
 
-    await check("tour: Due first / Walkthrough, MCQ grading, Full summary", async () => {
+    await check("tour: Walkthrough and Due first each start a tour; MCQ grading, Full summary", async () => {
       await openWalk(page, A.id, "");
-      await page.getByRole("button", { name: "Walkthrough" }).click();
-      assert((await page.getByRole("button", { name: "Walkthrough" }).getAttribute("aria-pressed")) === "true", "toggle failed");
-      await page.getByRole("button", { name: "Due first" }).click();
-      await page.getByRole("button", { name: /Start tour/ }).click();
       const card = page.getByRole("dialog", { name: "Tour card" });
+      // Picking an order starts the tour (it used to only flip a toggle: "does nothing").
+      await page.getByRole("button", { name: "Walkthrough" }).click();
+      await card.waitFor({ timeout: 5000 });
+      await page.getByRole("button", { name: "End tour" }).click();
+      await page.getByRole("button", { name: /Due first/ }).click();
       await card.waitFor();
       let graded = 0;
       for (let step = 0; step < 20 && !(await page.getByText("Tour complete").isVisible().catch(() => false)); step++) {
@@ -878,13 +918,44 @@ async function cleanup(userIds) {
       return `${graded} graded; ${recalled}`;
     });
 
-    await check("tour: palace tour room stepper", async () => {
-      await page.goto(`${BASE}/walk/palace/${ids.palace}?tour=1`);
-      await page.getByText(/Palace tour · room 1 of 2 · Atrium/).waitFor({ timeout: 15000 });
-      await page.getByRole("dialog", { name: "Tour card" }).waitFor({ timeout: 10000 });
-      await page.getByRole("button", { name: "Library →" }).click();
-      await page.getByText(/Palace tour · room 2 of 2 · Library/).waitFor({ timeout: 10000 });
-      await page.getByRole("button", { name: "← Atrium" }).waitFor({ timeout: 5000 });
+    await check("tour: palace tour skips empty rooms, then continues room to room through the door", async () => {
+      // 221B from its template: the landing (first room) has no cards, the
+      // sitting room and Holmes's bedroom do. The tour must start in the
+      // sitting room and carry on into the bedroom.
+      const tpl = await json(await api.post(`${BASE}/api/palaces/from-template`, { data: { template: "221b-baker-street" } }), 201);
+      const rooms = await json(await api.get(`${BASE}/api/rooms?palace=${tpl.id}`), 200);
+      const byTitle = Object.fromEntries(rooms.map((r) => [r.title, r]));
+      const loci = await json(await api.get(`${BASE}/api/loci?palace=${tpl.id}`), 200);
+      for (const [title, n] of [["Sitting room", 2], ["Holmes's bedroom", 1]]) {
+        const ls = loci.filter((l) => l.room_id === byTitle[title].id).slice(0, n);
+        for (const [i, l] of ls.entries()) await json(await api.post(`${BASE}/api/cards`, { data: { locus_id: l.id, front: `${title} Q${i + 1}`, back: `A${i + 1}` } }), 201);
+      }
+      await page.goto(`${BASE}/practice`);
+      const href = await page.getByRole("link", { name: /Walk your/ }).first().getAttribute("href");
+      assert(/^\/walk\/palace\/[0-9a-f-]+\?tour=1$/.test(href), `Practice walk link is ${href}`);
+      await page.goto(`${BASE}/walk/palace/${tpl.id}?tour=1&debug=1`);
+      const card = page.getByRole("dialog", { name: "Tour card" });
+      await card.waitFor({ timeout: 20000 });
+      assert((await page.evaluate(() => window.__walk.room())) === byTitle["Sitting room"].id, "tour did not start in the first room with due cards");
+      const done = page.getByRole("dialog", { name: "Tour complete" });
+      for (let step = 0; step < 20 && !(await done.isVisible().catch(() => false)); step++) {
+        const choices = card.getByRole("group", { name: "Answer choices" });
+        if (await choices.isVisible().catch(() => false)) {
+          await choices.getByRole("button").first().click();
+        } else if (await card.getByRole("button", { name: /^Reveal/ }).isVisible().catch(() => false)) {
+          await card.getByRole("button", { name: /^Reveal/ }).click();
+          await card.getByRole("button", { name: /Got it/ }).click();
+        } else if (await card.getByRole("button", { name: /Next/ }).isVisible().catch(() => false)) {
+          await card.getByRole("button", { name: /Next/ }).click();
+        }
+        await sleep(400);
+      }
+      await done.waitFor({ timeout: 8000 });
+      await done.getByRole("button", { name: /Continue to Holmes's bedroom/ }).click();
+      await inRoom(page, byTitle["Holmes's bedroom"].id, 10000);
+      await card.waitFor({ timeout: 10000 });
+      await shot(page, "palace-tour-continued");
+      return "sitting room -> Holmes's bedroom";
     });
 
     // -------------------------------------------------------------- phone
@@ -902,7 +973,7 @@ async function cleanup(userIds) {
         }
         await p.locator(MAP).waitFor({ timeout: 5000 });
         await p.getByLabel("Move joystick").waitFor({ timeout: 5000 });
-        for (const name of ["Start tour", "Edit room"]) {
+        for (const name of ["Due first", "Overview", "Edit room"]) {
           const b = p.getByRole("button", { name: new RegExp(name) }).or(p.getByRole("link", { name: new RegExp(name) })).first();
           if (!(await b.isVisible().catch(() => false))) continue;
           const bb = await b.boundingBox();
@@ -1081,6 +1152,92 @@ async function cleanup(userIds) {
       }
     });
 
+    await check("decks: the formatting toolbar writes markdown and the list renders it", async () => {
+      const deck = await json(await api.post(`${BASE}/api/decks`, { data: { title: "Markdown Deck" } }), 201);
+      await page.goto(`${BASE}/decks/${deck.id}`);
+      const q = page.getByRole("textbox", { name: "Question", exact: true });
+      await q.waitFor({ timeout: 15000 });
+      await q.fill("Which word is bold?");
+      const a = page.getByRole("textbox", { name: "Answer", exact: true });
+      await a.fill("strong");
+      await a.selectText();
+      await page.getByRole("toolbar", { name: "Answer formatting" }).getByRole("button", { name: "Bold" }).click();
+      assert((await a.inputValue()) === "**strong**", `answer is ${JSON.stringify(await a.inputValue())}`);
+      await page.getByText("Preview", { exact: true }).waitFor({ timeout: 3000 });
+      await a.focus();
+      await page.keyboard.press("Control+Enter");
+      await page.locator("li strong", { hasText: "strong" }).first().waitFor({ timeout: 8000 });
+      const fc = await json(await api.get(`${BASE}/api/flashcards?deck=${deck.id}`), 200);
+      assert((Array.isArray(fc) ? fc : fc.flashcards).some((f) => f.answer === "**strong**"), "markdown not saved");
+    });
+
+    await check("blueprint: trace a plan image, calibrate its scale, it survives a reload", async () => {
+      await page.goto(`${BASE}/palaces/${ids.palace}`);
+      await page.getByRole("button", { name: "Trace a plan" }).waitFor({ timeout: 15000 });
+      const src = path.join(OUT, "trace-source.png");
+      await page.screenshot({ path: src });
+      await page.getByLabel("Floor plan image to trace").setInputFiles(src);
+      await page.getByRole("group", { name: "Tracing" }).waitFor({ timeout: 10000 });
+      const img = page.locator("[data-testid=plan-underlay]");
+      const box = await page.locator("svg").filter({ has: img }).boundingBox();
+      await page.mouse.click(box.x + box.width * 0.3, box.y + box.height * 0.5);
+      await page.mouse.click(box.x + box.width * 0.6, box.y + box.height * 0.5);
+      const w0 = Number(await img.getAttribute("width"));
+      await page.getByLabel("Real distance between the two points in metres").fill("20");
+      await page.getByRole("button", { name: "Apply" }).click();
+      await sleep(300);
+      const w1 = Number(await img.getAttribute("width"));
+      assert(Math.abs(w1 - w0) > 0.01, "scale did not change");
+      await shot(page, "trace");
+      await page.reload();
+      await page.getByRole("group", { name: "Tracing" }).waitFor({ timeout: 15000 });
+      const w2 = Number(await page.locator("[data-testid=plan-underlay]").getAttribute("width"));
+      assert(Math.abs(w2 - w1) < 1e-6, `placement not restored (${w1} vs ${w2})`);
+      await page.getByRole("button", { name: "Remove" }).click();
+      await page.getByRole("button", { name: "Trace a plan" }).waitFor({ timeout: 5000 });
+      return `plan ${w0.toFixed(1)} m -> ${w1.toFixed(1)} m wide`;
+    });
+
+    await check("explore: a famous place walks signed out — every room drawn, frame rate held", async () => {
+      const anon = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+      try {
+        const p = await anon.newPage();
+        p.on("pageerror", (e) => pageErrors.push(e.message));
+        await p.goto(`${BASE}/explore`);
+        await p.getByRole("link", { name: "Walk it" }).first().waitFor({ timeout: 15000 });
+        await p.goto(`${BASE}/explore/house-of-the-vettii?debug=1`);
+        await p.waitForFunction(() => window.__walk?.introDone?.() === true, null, { timeout: 20000 });
+        await sleep(800);
+        const st = await pixelStats(p, await p.locator("canvas").first().screenshot());
+        assert(st.colors > 20, "explore canvas looks blank");
+        const drawn = await p.evaluate(() => window.__walk.drawn().length);
+        assert(drawn === 8, `${drawn} of 8 rooms drawn`);
+        await shot(p, "explore-vettii");
+        perf.push({ label: "walk villa, 8 rooms (explore)", ...(await frameStats(p)) });
+        const pf = perf[perf.length - 1];
+        if (GPU !== "software") assert(pf.fps >= PERF_FLOOR_FPS, `villa walk ${pf.fps} fps`);
+        return `8 rooms, ${pf.fps} fps, p95 ${pf.p95} ms`;
+      } finally {
+        await anon.close();
+      }
+    });
+
+    await check("explore: Build it turns a famous place into your palace", async () => {
+      await page.goto(`${BASE}/explore`);
+      await page.locator("li", { hasText: "The Long Room" }).getByRole("button", { name: /Build it/ }).click();
+      await page.waitForURL(/\/palaces\/[0-9a-f-]{36}$/, { timeout: 20000 });
+      const pid = page.url().split("/").pop();
+      const [rooms, loci, openings] = await Promise.all(
+        ["rooms", "loci", "openings"].map(async (k) => json(await api.get(`${BASE}/api/${k}?palace=${pid}`), 200))
+      );
+      assert(rooms.length === 3, `${rooms.length} rooms`);
+      assert(loci.length === 20, `${loci.length} loci`);
+      assert(openings.length === 4 && openings.every((o) => o.target_room_id), "doors not linked in pairs");
+      const long = rooms.find((r) => r.title === "Long Room");
+      assert((long.metadata?.furniture ?? []).length > 40, "furniture missing");
+      return `${rooms.length} rooms, ${loci.length} loci, ${long.metadata.furniture.length} pieces in the Long Room`;
+    });
+
     await check("landing: logged-out visitors see the demo palace walk", async () => {
       const anon = await browser.newContext({ viewport: { width: 1440, height: 900 } });
       try {
@@ -1091,6 +1248,7 @@ async function cleanup(userIds) {
         assert((await demo.locator("animateMotion").count()) === 1, "no walker on the demo route");
         assert((await demo.locator("circle").count()) >= 12, "demo loci missing");
         await p.getByRole("link", { name: /Build your first palace/ }).waitFor();
+        await p.getByRole("heading", { name: "Walk a famous place" }).waitFor();
         assert((await p.getByRole("button", { name: /Continue with/ }).count()) === 0 || !!process.env.GOOGLE_CLIENT_ID, "unconfigured OAuth button shown");
       } finally {
         await anon.close();

@@ -5,6 +5,7 @@ import * as THREE from "three";
 import { Html, OrbitControls } from "@react-three/drei";
 import type { Locus, Opening, Room } from "@/types/database";
 import { palaceBounds, palaceCameraDistance, palaceLevelRooms } from "@/lib/palaceScene";
+import { sharedSpans, twinFramedOpenings } from "@/lib/building";
 import { easeInOut, fromScene, toScene } from "@/lib/scene3d";
 import { placeAt, type FurnitureItem, type FurnitureKind } from "@/lib/furniture";
 import { RoomFurniture } from "../scene3d/Furniture";
@@ -95,6 +96,12 @@ export default function Palace3DView({
     [rooms, openings, levelId, fallbackLevelId]
   );
   const bounds = useMemo(() => palaceBounds(entries), [entries]);
+  // One building: shared walls are drawn once per side, linked doors framed once.
+  const shared = useMemo(() => {
+    const placed = entries.map((e) => e.room);
+    return new Map(placed.map((r) => [r.id, sharedSpans(r, placed)]));
+  }, [entries]);
+  const twinFramed = useMemo(() => twinFramedOpenings(entries.flatMap((e) => e.openings)), [entries]);
   const maxHeight = useMemo(() => entries.reduce((m, e) => Math.max(m, e.room.height), 3), [entries]);
   // Placement preview: where the next piece would land (room-local).
   const [hover, setHover] = useState<{ roomId: string; x: number; z: number } | null>(null);
@@ -156,6 +163,8 @@ export default function Palace3DView({
                 colors={colors}
                 cutaway
                 floorRaycast
+                shared={shared.get(room.id)}
+                twinFramed={twinFramed}
                 furniture={furnish?.furniture[room.id]}
                 furnitureSelectedId={furnish?.selected?.roomId === room.id ? furnish.selected.itemId : null}
                 furnitureDraggingId={dragging?.roomId === room.id ? dragging.itemId : null}
