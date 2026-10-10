@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomBytes, createHash } from "crypto";
 import { supabase } from "@/lib/supabase";
 import { normalizeEmail } from "@/lib/email";
+import { emailConfigured, resetEmail, sendEmail } from "@/lib/mailer";
 
 const GENERIC = "If an account exists for that email, a reset link is on its way.";
+const UNAVAILABLE = "Password reset by email isn't set up on this site yet. Ask the site's owner to reset your password.";
 
 function disclosureEnabled(): boolean {
   const flag = process.env.ALLOW_PASSWORD_RESET_DISCLOSURE;
@@ -24,6 +26,12 @@ export async function POST(req: NextRequest) {
   const email = normalizeEmail(rawEmail);
   if (!email) {
     return NextResponse.json({ error: "Email required" }, { status: 400 });
+  }
+
+  // No way to deliver a link: say so up front, for every address alike
+  // (before the lookup, so the answer never reveals whether an account exists).
+  if (!emailConfigured() && !disclosureEnabled()) {
+    return NextResponse.json({ message: UNAVAILABLE, delivery: "unavailable" });
   }
 
   const { data: user, error: lookupError } = await supabase
@@ -48,17 +56,18 @@ export async function POST(req: NextRequest) {
     .insert({ user_id: user.id, token_hash, expires_at });
   if (error) return NextResponse.json({ error: "Server error" }, { status: 500 });
 
-  // TODO: send the link by email once a mail provider is configured.
-  // Until then, disclosure mode hands the link back directly (dev default:
-  // on outside production). Set ALLOW_PASSWORD_RESET_DISCLOSURE=false in
-  // production or anyone can reset anyone's password from this endpoint.
-  if (disclosureEnabled()) {
-    const base =
-      process.env.NEXTAUTH_URL ??
-      req.nextUrl.origin ??
-      "http://localhost:3000";
-    return NextResponse.json({ message: GENERIC, resetUrl: `${base}/reset-password/${token}` });
+  const base = process.env.NEXTAUTH_URL ?? req.nextUrl.origin ?? "http://localhost:3000";
+  const resetUrl = `${base}/reset-password/${token}`;
+
+  // Email when configured (lib/mailer: RESEND_API_KEY + EMAIL_FROM). The
+  // answer is the same whether or not sending worked (no account probing).
+  if (emailConfigured()) {
+    await sendEmail({ to: email, ...resetEmail(resetUrl) });
+    return NextResponse.json({ message: GENERIC });
   }
 
-  return NextResponse.json({ message: GENERIC });
+  // Disclosure mode hands the link back directly (dev default: on outside
+  // production). Never enable it in production: anyone could reset anyone's
+  // password from this endpoint.
+  return NextResponse.json({ message: GENERIC, resetUrl });
 }
