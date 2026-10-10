@@ -3,6 +3,8 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { supabase } from "@/lib/supabase";
 import { buildHomeSummary } from "@/lib/homeSummary";
+import { groundPlan, type Blueprint } from "@/lib/blueprint";
+import type { Level, Locus, Opening, Room } from "@/types/database";
 import { serverError } from "@/lib/apiError";
 
 // Home-screen summary: due counts, continue target, palace card/room counts,
@@ -21,16 +23,29 @@ export async function GET(req: NextRequest) {
 
   const { data: rooms, error: roomsError } = await supabase
     .from("rooms")
-    .select("id, palace_id")
+    .select("*")
     .eq("user_id", userId);
   if (roomsError) return serverError("api/home/summary GET", roomsError);
   const roomIds = (rooms ?? []).map((r) => r.id);
 
-  let loci: { id: string; room_id: string }[] = [];
+  let loci: Locus[] = [];
+  let openings: Opening[] = [];
   if (roomIds.length > 0) {
-    const { data, error } = await supabase.from("loci").select("id, room_id").in("room_id", roomIds);
+    const [l, o] = await Promise.all([
+      supabase.from("loci").select("*").in("room_id", roomIds),
+      supabase.from("openings").select("*").in("room_id", roomIds),
+    ]);
+    if (l.error) return serverError("api/home/summary GET", l.error);
+    if (o.error) return serverError("api/home/summary GET", o.error);
+    loci = l.data ?? [];
+    openings = o.data ?? [];
+  }
+  let levels: Level[] = [];
+  const palaceIds = (palaces ?? []).map((p) => p.id);
+  if (palaceIds.length > 0) {
+    const { data, error } = await supabase.from("levels").select("*").in("palace_id", palaceIds);
     if (error) return serverError("api/home/summary GET", error);
-    loci = data ?? [];
+    levels = data ?? [];
   }
   const locusIds = loci.map((l) => l.id);
 
@@ -97,8 +112,22 @@ export async function GET(req: NextRequest) {
       deckCount: deckIds.length,
       flashcards,
     });
+  // Ground-floor plan per palace for the card thumbnails.
+  const plans: Record<string, Blueprint> = {};
+  for (const p of palaces ?? []) {
+    const pr = ((rooms ?? []) as Room[]).filter((r) => r.palace_id === p.id);
+    const ids = new Set(pr.map((r) => r.id));
+    const plan = groundPlan(
+      pr,
+      loci.filter((l) => ids.has(l.room_id)),
+      openings.filter((o) => ids.has(o.room_id)),
+      levels.filter((l) => l.palace_id === p.id)
+    );
+    if (plan) plans[p.id] = plan;
+  }
   return NextResponse.json({
     ...summary,
+    plans,
     onboarding: {
       onboardedAt: me?.onboarded_at ?? null,
       step: me?.onboarding_step ?? null,

@@ -9,6 +9,8 @@ export interface BlueprintRoom {
   title: string;
   /** 1-based creation order (matches "Room N" in the text blueprint). */
   number: number;
+  /** The room's theme colour (rooms.background), if any. */
+  color: string | null;
   x: number;
   y: number;
   w: number;
@@ -17,6 +19,7 @@ export interface BlueprintRoom {
 
 export interface BlueprintLocus {
   roomId: string;
+  locusId: string;
   /** Position in the room's tour order, 1-based. */
   n: number;
   x: number;
@@ -72,6 +75,7 @@ export function layoutBlueprint(
     id: r.id,
     title: r.title,
     number: numbering.get(r.id) ?? 0,
+    color: r.background ?? null,
     x: sx(r.pos_x),
     y: sy(r.pos_z + r.depth),
     w: r.width,
@@ -86,7 +90,7 @@ export function layoutBlueprint(
     ordered.forEach((l, i) => {
       const p = locusWorldPos(l, room);
       const n = inwardNormal(p.wall);
-      outLoci.push({ roomId: room.id, n: i + 1, x: sx(room.pos_x + p.x + n.x * inset), y: sy(room.pos_z + p.z + n.z * inset) });
+      outLoci.push({ roomId: room.id, locusId: l.id, n: i + 1, x: sx(room.pos_x + p.x + n.x * inset), y: sy(room.pos_z + p.z + n.z * inset) });
     });
   }
 
@@ -119,6 +123,24 @@ export function layoutBlueprint(
   };
 }
 
+/** Rooms numbered in palace creation order (the tour / print numbering). */
+function roomNumbering(rooms: Room[]): Map<string, number> {
+  return new Map([...rooms].sort((a, b) => a.created_at.localeCompare(b.created_at)).map((r, i) => [r.id, i + 1] as const));
+}
+
+/** Plan of one level (rooms without a level belong to the first level). */
+function planForLevel(rooms: Room[], loci: Locus[], openings: Opening[], levels: Level[], levelId: string | null): Blueprint | null {
+  const firstLevelId = [...levels].sort((a, b) => a.idx - b.idx)[0]?.id ?? null;
+  const onLevel = rooms.filter((r) => (r.level_id ?? firstLevelId) === levelId);
+  const ids = new Set(onLevel.map((r) => r.id));
+  return layoutBlueprint(
+    onLevel,
+    loci.filter((l) => ids.has(l.room_id)),
+    openings.filter((o) => ids.has(o.room_id)),
+    roomNumbering(rooms)
+  );
+}
+
 /**
  * Plan for the level the given room is on (rooms without a level belong to the
  * first one), with room numbers in palace creation order. Used by the live
@@ -135,18 +157,13 @@ export function levelPlanFor(
   const current = real.find((r) => r.id === currentRoomId);
   if (!current) return null;
   const firstLevelId = [...levels].sort((a, b) => a.idx - b.idx)[0]?.id ?? null;
-  const levelId = current.level_id ?? firstLevelId;
-  const onLevel = real.filter((r) => (r.level_id ?? firstLevelId) === levelId);
-  const ids = new Set(onLevel.map((r) => r.id));
-  const numbering = new Map(
-    [...real].sort((a, b) => a.created_at.localeCompare(b.created_at)).map((r, i) => [r.id, i + 1] as const)
-  );
-  return layoutBlueprint(
-    onLevel,
-    loci.filter((l) => ids.has(l.room_id)),
-    openings.filter((o) => ids.has(o.room_id)),
-    numbering
-  );
+  return planForLevel(real, loci, openings, levels, current.level_id ?? firstLevelId);
+}
+
+/** A palace's ground (first) level, for palace-card thumbnails. */
+export function groundPlan(rooms: Room[], loci: Locus[], openings: Opening[], levels: Level[]): Blueprint | null {
+  const firstLevelId = [...levels].sort((a, b) => a.idx - b.idx)[0]?.id ?? null;
+  return planForLevel(rooms, loci, openings, levels, firstLevelId);
 }
 
 /** A point in a room's local metres (x east, z north) -> plan coordinates. */

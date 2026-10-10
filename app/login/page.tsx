@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { signIn } from "next-auth/react";
 import { normalizeEmail } from "@/lib/email";
+import OAuthButtons from "@/components/OAuthButtons";
 
 // NextAuth OAuth failures land here as ?error=... (pages.signIn = "/login").
 // Surface them instead of failing silently when the provider is misconfigured.
@@ -80,19 +81,7 @@ function LoginForm() {
             {sending ? "Logging in…" : "Log In"}
           </button>
         </form>
-        <div className="my-4 flex items-center gap-3 text-xs text-muted-foreground">
-          <span className="h-px flex-1 bg-border" aria-hidden />
-          or
-          <span className="h-px flex-1 bg-border" aria-hidden />
-        </div>
-        <div className="space-y-2">
-          <button onClick={() => signIn("google", { callbackUrl: "/home" })} className="btn-outline w-full">
-            Continue with Google
-          </button>
-          <button disabled title="Apple sign-in arrives with the production domain" className="btn-outline w-full opacity-50">
-            Continue with Apple (soon)
-          </button>
-        </div>
+        <OAuthButtons />
         <p className="mt-3 text-center text-sm">
           <Link href="/forgot-password" className="text-muted-foreground hover:text-foreground hover:underline">
             Forgot password?

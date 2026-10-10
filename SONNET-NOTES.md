@@ -77,6 +77,42 @@ Bugs found and fixed:
 Still unverified: a real phone (touch is emulated via CDP) and the browser's
 own Print dialog (the PDF comes from the same print-media rendering).
 
+## Experience pass (2026-10-09, Phase J)
+
+Goal: make the core loop feel like the product in CONCEPT.md, judged by
+walking through every screen (desktop/phone, light/dark) with a realistic
+seeded palace. Verified: `tsc` + `lint` + tests + `next build`, and
+`npm run livecheck` 34/34 on the RTX 5050 (60 fps walk on the iGPU too).
+
+- Walk mode: ambient light swamped the directional light, so every wall was
+  the same grey. Now a warm key (SE) + cool fill (NW), low ambient: four
+  distinct wall shades. Floor tiles (canvas texture, 1 m), skirting and a
+  gold-washed cornice draw the corners; walls take a wash of the room colour.
+- Loci are framed medallion plaques on the wall with their number (cached
+  canvas textures), not floating spheres. Labels fade beyond 6 m in walk
+  mode. The tour route is drawn on the floor. Clicking a plaque glides you
+  there. During a tour, graded plaques turn green (recalled) or red (missed).
+- Bug: `?tour=1` started in walk order before the due order loaded, then the
+  stops re-sorted under the running tour (card for locus 3, camera at locus
+  1). Auto tours now wait for the order; a running tour snapshots its stops.
+- Bug: `useFetch` kept the previous URL's data after a URL change (palace
+  tour room switches). It now resets during render.
+- Study: the level map with the card's room + locus lit sits above the card;
+  revealing the answer keeps the question visible.
+- Palace page: title/description/stats header with Walk palace primary;
+  details edit behind "Edit details". Room cards in tour order ("1. Atrium")
+  with due count and a learned bar (`roomProgress` in `lib/srs.ts`).
+- Palace cards show a ground-floor thumbnail (`groundPlan`, sent by
+  `/api/home/summary` as `plans`); delete moved into a "⋯" menu. Home leads
+  with the greeting; the redundant stat tiles are gone.
+- Room editor: room title as the heading, deck tools grouped, details form
+  (and Delete room) below the 3D editor.
+- Landing: animated demo palace (a walker follows the study route through the
+  doors), the three-step loop, sign-up CTA. Login/signup show Google/Apple
+  only when the provider is configured (`getProviders()`).
+- Phone walk HUD: touch hints instead of WASD, compact buttons, page actions
+  folded into the title card.
+
 ## NOT verified — needs the PC (real GPU + live clicking) — superseded by the pass above
 
 - Walk tour interactions end to end: MCQ grading, the new `1 = Missed / 2 = Got it`

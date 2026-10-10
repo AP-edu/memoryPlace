@@ -31,7 +31,7 @@ export default function PalacesPage() {
         Design rooms, place loci on the walls, then walk them in 3D. {summary.palaces.length} palace
         {summary.palaces.length === 1 ? "" : "s"} · {summary.totalCards} card{summary.totalCards === 1 ? "" : "s"}
       </p>
-      <PalaceList palaces={summary.palaces} onChanged={refetch} searchable />
+      <PalaceList palaces={summary.palaces} plans={summary.plans} onChanged={refetch} searchable />
     </div>
   );
 }

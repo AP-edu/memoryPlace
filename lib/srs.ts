@@ -111,3 +111,26 @@ export function sortPlayQueue<T extends QueueItem>(
   later.sort(compareCanonical);
   return [...due, ...later];
 }
+export interface RoomProgress {
+  total: number;
+  /** Due now (new cards count as due). */
+  due: number;
+  /** Reviewed at least once and not due again yet. */
+  learned: number;
+}
+
+/** Per-room card counts for overview cards, using the same due rule as study. */
+export function roomProgress(
+  items: Array<QueueItem & { roomId: string; review: unknown | null }>,
+  now: number
+): Map<string, RoomProgress> {
+  const out = new Map<string, RoomProgress>();
+  for (const item of items) {
+    const p = out.get(item.roomId) ?? { total: 0, due: 0, learned: 0 };
+    p.total++;
+    if (isDue(item, now)) p.due++;
+    else if (item.review) p.learned++;
+    out.set(item.roomId, p);
+  }
+  return out;
+}

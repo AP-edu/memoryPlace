@@ -43,6 +43,14 @@ Order of delivery from the vision docs; each phase ends green on tsc + eslint +
 - I. Launch UX: Palaces tab, profile edits, loci insertion UX, whole-level minimap
   (`lib/blueprint.ts` + `components/scene3d/MiniMap.tsx`), error/404/loading shell, metadata +
   manifest. DONE (PC canvas-click verdict green 2026-10-09).
+- J. Experience pass: walk mode reads as a place (key/fill lighting, floor
+  tiles, skirting + cornice, room-colour walls, wall-mounted numbered plaques,
+  route on the floor, tour grades colour the plaques, click a plaque to walk
+  there), seeded star field (`lib/sky.ts`), study shows the locus on the
+  level map, palace hub header + per-room due/learned (`roomProgress`),
+  blueprint thumbnails on palace cards (`groundPlan`), landing page with a
+  walking demo palace (`lib/demoPalace.ts`), OAuth buttons only when
+  configured. DONE (PC livecheck 34/34, 2026-10-09).
 
 ## Geometry convention (Phase A, source of truth for B/F)
 

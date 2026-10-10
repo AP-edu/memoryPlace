@@ -106,7 +106,7 @@ function FlashcardRow({
                 Port to palace
               </button>
             )}
-            <button onClick={remove} className="btn-ghost text-destructive">
+            <button onClick={remove} className="btn-ghost text-muted-foreground hover:!text-destructive">
               Delete
             </button>
           </div>
@@ -126,7 +126,7 @@ function FlashcardRow({
               <button onClick={push} className="btn-ghost">
                 Push text to palace
               </button>
-              <button onClick={unlink} className="btn-ghost text-destructive">
+              <button onClick={unlink} className="btn-ghost text-muted-foreground hover:!text-destructive">
                 Unlink
               </button>
             </div>

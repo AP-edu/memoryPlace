@@ -9,6 +9,8 @@ import { Room3DPreview } from "@/components/palace/Room3DPreview";
 import { GridEditor } from "@/components/palace-editor/GridEditor";
 import { httpBackend } from "@/components/palace-editor/backend";
 import { PageSkeleton } from "@/components/ui/Skeleton";
+import { roomProgress } from "@/lib/srs";
+import type { ReviewPayload } from "@/lib/reviewTypes";
 
 // three.js is client-only and heavy: load the 3D palace tab on demand.
 const Palace3DView = dynamic(() => import("@/components/palace/Palace3DView"), {
@@ -30,12 +32,16 @@ export default function PalacePage() {
   const { data: palaceLoci } = useFetch<Locus[]>(id ? `/api/loci?palace=${id}` : null);
   const lociByRoom = new Map<string, number>();
   for (const l of palaceLoci ?? []) lociByRoom.set(l.room_id, (lociByRoom.get(l.room_id) ?? 0) + 1);
+  // Cards + due state per room (same due rule as study), for the header and room cards.
+  const { data: reviews } = useFetch<ReviewPayload>(id ? `/api/reviews?palace=${id}` : null);
+  const progress = reviews ? roomProgress(reviews.items, reviews.now) : null;
 
   const [palaceTitle, setPalaceTitle] = useState("");
   const [palaceDesc, setPalaceDesc] = useState("");
   const seeded = useRef(false);
   const palaceDirty = palace ? palaceTitle !== palace.title || palaceDesc !== (palace.description ?? "") : false;
   const [palaceErr, setPalaceErr] = useState<string | null>(null);
+  const [editingDetails, setEditingDetails] = useState(false);
   const [liveRooms, setLiveRooms] = useState<Room[]>([]);
   const [liveLevels, setLiveLevels] = useState<Level[]>([]);
   // Openings as edited in the grid editor, so the 3D preview shows door edits live.
@@ -71,6 +77,7 @@ export default function PalacePage() {
     });
     if (!res.ok) return setPalaceErr("Failed to save palace.");
     setPalaceErr(null);
+    setEditingDetails(false);
     seeded.current = false;
     refetchPalace();
   }
@@ -85,8 +92,11 @@ export default function PalacePage() {
   const sortedLevels = [...liveLevels].sort((a, b) => a.idx - b.idx);
   const firstLiveLevelId = sortedLevels[0]?.id ?? null;
   const activeLevelId = editorLevelId ?? firstLiveLevelId;
+  // Same numbering as the palace tour and the printed blueprint: creation order.
+  const roomOrder = [...liveRooms.filter((x) => !x.id.startsWith("tmp-"))].sort((a, b) => a.created_at.localeCompare(b.created_at));
+  const roomNumber = new Map(roomOrder.map((r, i) => [r.id, i + 1]));
   const roomsByLevel = new Map<string | null, Room[]>();
-  for (const r of liveRooms.filter((x) => !x.id.startsWith("tmp-"))) {
+  for (const r of roomOrder) {
     const key = liveLevels.some((l) => l.id === r.level_id) ? r.level_id : null;
     const list = roomsByLevel.get(key) ?? [];
     list.push(r);
@@ -96,32 +106,67 @@ export default function PalacePage() {
   return (
     <div className="mx-auto max-w-7xl p-4 sm:p-6">
       <Link href="/palaces" className="btn-ghost">
-        {"\u2190 Back to palaces"}
+        {"\u2190 Palaces"}
       </Link>
 
-      <div className="mt-3 flex flex-wrap gap-2">
-        <input value={palaceTitle} onChange={(e) => setPalaceTitle(e.target.value)} placeholder="Palace title" className="input-base max-w-72" aria-label="Palace title" />
-        <input value={palaceDesc} onChange={(e) => setPalaceDesc(e.target.value)} placeholder="Description (optional)" className="input-base max-w-80" aria-label="Palace description" />
-        <button onClick={savePalace} disabled={!palaceDirty} className="btn-primary">
-          Save palace
-        </button>
-        <Link href={`/study/palace/${id}`} className="btn-outline">
-          Study due
-        </Link>
-        <Link href={`/walk/palace/${id}?tour=1`} className="btn-outline">
-          Walk palace
-        </Link>
-        <Link href={`/palaces/${id}/print`} className="btn-ghost">
-          Export / Print
-        </Link>
-      </div>
-      {palaceErr && <p className="mt-2 text-sm text-destructive">{palaceErr}</p>}
-
-      <h1 className="mb-1 mt-6 text-3xl font-semibold">{palace?.title ?? "Palace"} — Blueprint</h1>
-      <p className="mb-4 text-sm text-muted-foreground">
-        Draw rooms on the grid (metres, north up), stack levels, and place doors on shared walls. Open a room to place loci and
-        cards.
-      </p>
+      <header className="mt-3 mb-5 flex flex-wrap items-end justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          {editingDetails ? (
+            <form
+              className="flex max-w-2xl flex-col gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void savePalace();
+              }}
+            >
+              <input value={palaceTitle} onChange={(e) => setPalaceTitle(e.target.value)} placeholder="Palace title" className="input-base text-lg font-semibold" aria-label="Palace title" autoFocus />
+              <input value={palaceDesc} onChange={(e) => setPalaceDesc(e.target.value)} placeholder="What lives in this palace? (optional)" className="input-base" aria-label="Palace description" />
+              <div className="flex gap-2">
+                <button type="submit" disabled={!palaceDirty || !palaceTitle.trim()} className="btn-primary !px-3 !py-1.5">
+                  Save
+                </button>
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={() => {
+                    setPalaceTitle(palace?.title ?? "");
+                    setPalaceDesc(palace?.description ?? "");
+                    setEditingDetails(false);
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          ) : (
+            <>
+              <div className="flex items-baseline gap-3">
+                <h1 className="truncate text-3xl font-semibold sm:text-4xl">{palace?.title ?? "Palace"}</h1>
+                <button type="button" onClick={() => setEditingDetails(true)} className="shrink-0 text-sm text-link hover:underline" disabled={!palace}>
+                  Edit details
+                </button>
+              </div>
+              {palace?.description && <p className="mt-1 text-muted-foreground">{palace.description}</p>}
+              <p className="mt-1 text-sm text-muted-foreground">
+                {liveRooms.filter((r) => !r.id.startsWith("tmp-")).length || rooms?.length || 0} rooms · {palaceLoci?.length ?? 0} loci
+                {reviews ? ` · ${reviews.total} cards · ${reviews.due} due` : ""}
+              </p>
+            </>
+          )}
+          {palaceErr && <p className="mt-2 text-sm text-destructive">{palaceErr}</p>}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link href={`/palaces/${id}/print`} className="btn-ghost">
+            Print blueprint
+          </Link>
+          <Link href={`/study/palace/${id}`} className="btn-outline">
+            {reviews && reviews.due > 0 ? `Study ${reviews.due} due` : "Study"}
+          </Link>
+          <Link href={`/walk/palace/${id}?tour=1`} className="btn-primary">
+            {"\u25B6"} Walk palace
+          </Link>
+        </div>
+      </header>
 
       <div className="mb-2 flex flex-wrap items-center gap-1" role="tablist" aria-label="Blueprint view">
         {(["2d", "3d"] as const).map((v) => (
@@ -155,6 +200,12 @@ export default function PalacePage() {
           </>
         )}
       </div>
+
+      <p className="mb-3 text-xs text-muted-foreground">
+        {view === "2d"
+          ? "Draw rooms on the grid (metres, north up), stack levels, and put doors on shared walls. Open a room to place loci and cards."
+          : "Orbit with the mouse. Click a room to select it."}
+      </p>
 
       {ready ? (
         view === "2d" ? (
@@ -239,31 +290,59 @@ export default function PalacePage() {
                       className={`card-base cursor-pointer p-4 transition-colors ${lit ? "border-primary ring-2 ring-primary/50" : "hover:border-primary/40"}`}
                     >
                       <div className="flex items-baseline justify-between gap-2">
-                        <span className="truncate font-medium">{r.title}</span>
+                        <span className="truncate font-medium">
+                          <span className="mr-1.5 text-muted-foreground">{roomNumber.get(r.id)}.</span>
+                          {r.title}
+                        </span>
                         <span className="shrink-0 text-xs text-muted-foreground">
                           {r.width} × {r.depth} × {r.height} m
                         </span>
                       </div>
-                      <p className="mt-0.5 text-xs text-muted-foreground">
-                        {levelName(r)} · {lociByRoom.get(r.id) ?? 0} loci
-                      </p>
-                      <div className="mt-3 flex flex-wrap gap-2 text-sm" onClick={(e) => e.stopPropagation()}>
-                        <Link
-                          href={`/rooms/${r.id}${(lociByRoom.get(r.id) ?? 0) === 0 ? "?tool=place" : ""}`}
-                          className="btn-outline !px-3 !py-1.5"
-                        >
-                          {(lociByRoom.get(r.id) ?? 0) === 0 ? "+ Add loci" : "Edit room"}
-                        </Link>
-                        <Link href={`/walk/${r.id}?tour=1`} className="btn-primary !px-3 !py-1.5">
-                          Tour
-                        </Link>
-                        <Link href={`/walk/${r.id}`} className="btn-ghost">
-                          Walk
-                        </Link>
-                        <button onClick={() => setPreviewRoomId(r.id)} className="btn-ghost">
-                          3D preview
-                        </button>
-                      </div>
+                      {(() => {
+                        const loci = lociByRoom.get(r.id) ?? 0;
+                        const p = progress?.get(r.id);
+                        return (
+                          <>
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                              {levelName(r)} · {loci} loci
+                              {p ? ` · ${p.total} cards` : ""}
+                              {p && p.due > 0 && <span className="font-medium text-highlight"> · {p.due} due</span>}
+                            </p>
+                            {p && p.total > 0 && (
+                              <div className="mt-2 flex items-center gap-2" title={`${p.learned} of ${p.total} learned`}>
+                                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+                                  <div className="h-full rounded-full bg-success" style={{ width: `${(p.learned / p.total) * 100}%` }} />
+                                </div>
+                                <span className="text-[11px] tabular-nums text-muted-foreground">
+                                  {p.learned}/{p.total} learned
+                                </span>
+                              </div>
+                            )}
+                            <div className="mt-3 flex flex-wrap gap-2 text-sm" onClick={(e) => e.stopPropagation()}>
+                              {loci > 0 ? (
+                                <>
+                                  <Link href={`/walk/${r.id}?tour=1`} className="btn-primary !px-3 !py-1.5">
+                                    {"\u25B6"} Tour
+                                  </Link>
+                                  <Link href={`/walk/${r.id}`} className="btn-outline !px-3 !py-1.5">
+                                    Walk
+                                  </Link>
+                                  <Link href={`/rooms/${r.id}`} className="btn-outline !px-3 !py-1.5">
+                                    Edit room
+                                  </Link>
+                                </>
+                              ) : (
+                                <Link href={`/rooms/${r.id}?tool=place`} className="btn-primary !px-3 !py-1.5">
+                                  + Add loci
+                                </Link>
+                              )}
+                              <button onClick={() => setPreviewRoomId(r.id)} className="btn-ghost">
+                                3D preview
+                              </button>
+                            </div>
+                          </>
+                        );
+                      })()}
                     </div>
                   );
                 })}

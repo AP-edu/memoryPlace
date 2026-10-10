@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useFrame, type ThreeEvent } from "@react-three/fiber";
 import { Html, Line } from "@react-three/drei";
 import * as THREE from "three";
@@ -23,6 +23,62 @@ export interface WallPointerEvent {
   point: { x: number; y: number; z: number };
   event: ThreeEvent<PointerEvent> | ThreeEvent<MouseEvent>;
 }
+
+const mix = (a: string, b: string, t: number) => "#" + new THREE.Color(a).lerp(new THREE.Color(b), t).getHexString();
+
+/** Room palette: walls take a light wash of the room's colour so rooms read apart. */
+function roomPalette(room: Room, colors: SceneColors, hallway: boolean) {
+  const tint = room.background ?? (hallway ? colors.archway : null);
+  const wall = tint ? mix(colors.wall, tint, colors.night ? 0.22 : 0.16) : colors.wall;
+  return {
+    wall,
+    floor: tint ? mix(colors.floor, tint, hallway && !room.background ? 0.18 : 0.35) : colors.floor,
+    // Skirting and a gold-washed cornice draw the corners and the floor line.
+    skirting: mix(wall, "#000000", colors.night ? 0.35 : 0.3),
+    cornice: mix(wall, colors.door, colors.night ? 0.35 : 0.3),
+  };
+}
+
+const tileCanvases = new Map<string, HTMLCanvasElement>();
+/** 2x2 marble tiles with grout lines (one texture repeat = 2 m), cached per colour. */
+function tileCanvas(floor: string): HTMLCanvasElement {
+  let c = tileCanvases.get(floor);
+  if (c) return c;
+  c = document.createElement("canvas");
+  c.width = c.height = 256;
+  const g = c.getContext("2d")!;
+  const base = new THREE.Color(floor);
+  const tone = (t: number) => "#" + base.clone().lerp(new THREE.Color(t > 0 ? "#ffffff" : "#000000"), Math.abs(t)).getHexString();
+  for (let i = 0; i < 2; i++)
+    for (let j = 0; j < 2; j++) {
+      g.fillStyle = tone((i + j) % 2 ? -0.035 : 0.025);
+      g.fillRect(i * 128, j * 128, 128, 128);
+    }
+  g.fillStyle = tone(-0.16);
+  for (const p of [0, 128]) {
+    g.fillRect(p, 0, 3, 256);
+    g.fillRect(0, p, 256, 3);
+  }
+  tileCanvases.set(floor, c);
+  return c;
+}
+
+function useFloorTexture(floor: string, width: number, depth: number): THREE.Texture | null {
+  const tex = useMemo(() => {
+    if (typeof document === "undefined") return null;
+    const t = new THREE.CanvasTexture(tileCanvas(floor));
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(width / 2, depth / 2);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = 4;
+    return t;
+  }, [floor, width, depth]);
+  useEffect(() => () => tex?.dispose(), [tex]);
+  return tex;
+}
+
+const SKIRT_H = 0.14;
+const CORNICE_H = 0.12;
 
 function lintelHeight(o: Opening, room: Room): number {
   return o.kind === "door" ? Math.min(2.1, room.height - 0.1) : Math.max(1.8, room.height - 0.35);
@@ -85,13 +141,11 @@ export function RoomShell({
       ? (e: ThreeEvent<PointerEvent> | ThreeEvent<MouseEvent>) => cb({ wall, point: fromScene(e.point), event: e })
       : undefined;
 
-  // Room colour tints the themed floor so it reads in light and dark.
-  // Hallways get a cooler, path-coloured floor so they read as corridors.
+  // Room colour tints floor and walls so each room reads as its own place, in
+  // light and dark. Hallways get a cooler, path-coloured floor.
   const hallway = isHallway(room);
-  const floorColor = useMemo(() => {
-    const tint = room.background ?? (hallway ? colors.archway : null);
-    return tint ? "#" + new THREE.Color(colors.floor).lerp(new THREE.Color(tint), hallway && !room.background ? 0.18 : 0.35).getHexString() : colors.floor;
-  }, [room.background, colors.floor, colors.archway, hallway]);
+  const palette = useMemo(() => roomPalette(room, colors, hallway), [room, colors, hallway]);
+  const floorTex = useFloorTexture(palette.floor, room.width + WALL_THICK, room.depth + WALL_THICK);
 
   return (
     <group>
@@ -101,7 +155,7 @@ export function RoomShell({
         onPointerMove={onFloorMove ? (e) => onFloorMove(fromScene(e.point)) : undefined}
       >
         <boxGeometry args={[room.width + WALL_THICK, 0.1, room.depth + WALL_THICK]} />
-        <meshStandardMaterial color={floorColor} roughness={0.9} />
+        <meshStandardMaterial color="#ffffff" map={floorTex} roughness={0.75} />
       </mesh>
       {WALL_FACES.map((wall) => {
         const horizontal = wall === "north" || wall === "south";
@@ -130,10 +184,38 @@ export function RoomShell({
                   onPointerMove={handler(wall, onWallMove)}
                 >
                   <boxGeometry args={horizontal ? [len, room.height, WALL_THICK] : [WALL_THICK, room.height, len]} />
-                  <meshStandardMaterial color={colors.wall} roughness={0.85} />
+                  <meshStandardMaterial color={palette.wall} roughness={0.85} />
                 </mesh>
               );
             })}
+            {/* Skirting along each solid span (it stops at doorways). */}
+            {spans.map((span, i) => {
+              const a = wallPoint(wall, span.from, size);
+              const b = wallPoint(wall, span.to, size);
+              const len = horizontal ? b.x - a.x : b.z - a.z;
+              if (len <= 0.01) return null;
+              const d = 0.035;
+              const mid = { x: (a.x + b.x) / 2 + (n.x * d) / 2, y: SKIRT_H / 2, z: (a.z + b.z) / 2 + (n.z * d) / 2 };
+              return (
+                <mesh key={`skirt-${wall}-${i}`} position={toScene(mid)} raycast={noRaycast}>
+                  <boxGeometry args={horizontal ? [len, SKIRT_H, d] : [d, SKIRT_H, len]} />
+                  <meshStandardMaterial color={palette.skirting} roughness={0.7} />
+                </mesh>
+              );
+            })}
+            {/* Cornice along the whole wall, over the lintels too. */}
+            {(() => {
+              const len = horizontal ? room.width : room.depth;
+              const c = wallPoint(wall, 0.5, size);
+              const d = 0.05;
+              const mid = { x: c.x + (n.x * d) / 2, y: room.height - CORNICE_H / 2, z: c.z + (n.z * d) / 2 };
+              return (
+                <mesh position={toScene(mid)} raycast={noRaycast}>
+                  <boxGeometry args={horizontal ? [len, CORNICE_H, d] : [d, CORNICE_H, len]} />
+                  <meshStandardMaterial color={palette.cornice} roughness={0.55} metalness={0.15} />
+                </mesh>
+              );
+            })()}
             {/* Invisible hit boxes over doorways: clicks there reach the editor so
                 it can say "that's a doorway" instead of silently doing nothing. */}
             {(onWallClick || onWallMove) &&
@@ -173,7 +255,7 @@ export function RoomShell({
                   {lintelH > 0.02 && (
                     <mesh position={toScene({ x: base.x, y: top + lintelH / 2, z: base.z })} raycast={noRaycast}>
                       <boxGeometry args={horizontal ? [w, lintelH, WALL_THICK] : [WALL_THICK, lintelH, w]} />
-                      <meshStandardMaterial color={colors.wall} roughness={0.85} />
+                      <meshStandardMaterial color={palette.wall} roughness={0.85} />
                     </mesh>
                   )}
                   {o.kind === "door" && (
@@ -209,7 +291,135 @@ export interface MarkerLocus {
   locus: Locus;
 }
 
-/** Numbered locus markers (study order) with an optional path between them. */
+/** Plaques sit just proud of the wall (no z-fighting), facing into the room. */
+export const PLAQUE_OFFSET = 0.05;
+const PLAQUE_R = 0.19;
+const PATH_INSET = 0.45;
+const RECALLED = "#2f9e44";
+const MISSED = "#e03131";
+
+const faceTextures = new Map<string, THREE.CanvasTexture>();
+/** Medallion face: the study-order number on the locus colour (cached per number + colour). */
+function plaqueFace(label: string, bg: string): THREE.CanvasTexture | null {
+  if (typeof document === "undefined") return null;
+  const key = `${label}|${bg}`;
+  const hit = faceTextures.get(key);
+  if (hit) return hit;
+  const c = document.createElement("canvas");
+  c.width = c.height = 128;
+  const g = c.getContext("2d")!;
+  const bgColor = new THREE.Color(bg);
+  g.fillStyle = "#" + bgColor.getHexString();
+  g.beginPath();
+  g.arc(64, 64, 64, 0, Math.PI * 2);
+  g.fill();
+  const light = bgColor.r * 0.2126 + bgColor.g * 0.7152 + bgColor.b * 0.0722 > 0.45;
+  g.strokeStyle = light ? "rgba(11,22,64,0.25)" : "rgba(255,255,255,0.35)";
+  g.lineWidth = 4;
+  g.beginPath();
+  g.arc(64, 64, 54, 0, Math.PI * 2);
+  g.stroke();
+  g.fillStyle = light ? "#0b1640" : "#ffffff";
+  const family = getComputedStyle(document.body).fontFamily || "sans-serif";
+  g.font = `700 ${label.length > 2 ? 42 : label.length > 1 ? 54 : 62}px ${family}`;
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.fillText(label, 64, 68);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  faceTextures.set(key, t);
+  return t;
+}
+
+/** Framed medallion mounted on the wall: the locus itself (and its drag handle in the editor). */
+function Plaque({
+  label,
+  face,
+  frame,
+  active,
+  ghost,
+  raycast,
+  onPointerDown,
+  onClick,
+}: {
+  label: string;
+  face: string;
+  frame: string;
+  active: boolean;
+  ghost?: boolean;
+  raycast: THREE.Mesh["raycast"];
+  onPointerDown?: (e: ThreeEvent<PointerEvent>) => void;
+  onClick?: (e: ThreeEvent<MouseEvent>) => void;
+}) {
+  const tex = useMemo(() => plaqueFace(label, face), [label, face]);
+  const scale = active ? 1.15 : 1;
+  // Never leave the hover cursor behind if a hovered plaque goes away.
+  useEffect(
+    () => () => {
+      document.body.style.cursor = "";
+    },
+    []
+  );
+  return (
+    <group scale={[scale, scale, scale]}>
+      <mesh
+        rotation={[Math.PI / 2, 0, 0]}
+        raycast={raycast}
+        onPointerDown={onPointerDown}
+        onClick={onClick}
+        onPointerOver={onClick || onPointerDown ? () => (document.body.style.cursor = "pointer") : undefined}
+        onPointerOut={onClick || onPointerDown ? () => (document.body.style.cursor = "") : undefined}
+      >
+        <cylinderGeometry args={[PLAQUE_R, PLAQUE_R, 0.04, 40]} />
+        <meshStandardMaterial
+          color={frame}
+          emissive={frame}
+          emissiveIntensity={active ? 0.5 : 0.1}
+          metalness={0.35}
+          roughness={0.4}
+          transparent={ghost}
+          opacity={ghost ? 0.65 : 1}
+        />
+      </mesh>
+      <mesh position={[0, 0, 0.021]} raycast={noRaycast}>
+        <circleGeometry args={[PLAQUE_R * 0.84, 40]} />
+        <meshStandardMaterial
+          map={tex}
+          emissiveMap={tex}
+          emissive="#ffffff"
+          emissiveIntensity={active ? 0.6 : 0.32}
+          roughness={0.6}
+          transparent={ghost}
+          opacity={ghost ? 0.65 : 1}
+        />
+      </mesh>
+    </group>
+  );
+}
+
+/** Html label that fades out beyond `fade` metres from the camera (unless pinned). */
+function MarkerLabel({ fade, pinned, children }: { fade?: number; pinned: boolean; children: React.ReactNode }) {
+  const anchor = useRef<THREE.Group>(null);
+  const el = useRef<HTMLDivElement>(null);
+  const tmp = useRef(new THREE.Vector3());
+  useFrame(({ camera }) => {
+    if (!fade || !anchor.current || !el.current) return;
+    const d = anchor.current.getWorldPosition(tmp.current).distanceTo(camera.position);
+    el.current.style.opacity = pinned ? "1" : String(Math.max(0, Math.min(1, (fade - d) / 1.5)));
+  });
+  return (
+    <group ref={anchor} position={[0, 0.42, 0]}>
+      <Html center zIndexRange={[20, 0]} style={{ pointerEvents: "none" }}>
+        <div ref={el} className="transition-opacity duration-200">
+          {children}
+        </div>
+      </Html>
+    </group>
+  );
+}
+
+/** Numbered locus plaques (study order) with an optional path between them. */
 export function LocusMarkers({
   room,
   loci,
@@ -217,6 +427,9 @@ export function LocusMarkers({
   selectedId,
   showPath = true,
   showLabels = true,
+  labelFade,
+  ghost = false,
+  results,
   draggingId,
   onMarkerDown,
   onMarkerClick,
@@ -230,6 +443,12 @@ export function LocusMarkers({
   selectedId?: string | null;
   showPath?: boolean;
   showLabels?: boolean;
+  /** Walk mode: labels fade out beyond this many metres (the selected one stays). */
+  labelFade?: number;
+  /** Placement preview in the editor: translucent "+" plaque. */
+  ghost?: boolean;
+  /** Tour grades per locus id: recalled plaques turn green, missed ones red. */
+  results?: Record<string, boolean> | null;
   draggingId?: string | null;
   onMarkerDown?: (locus: Locus, e: ThreeEvent<PointerEvent>) => void;
   onMarkerClick?: (locus: Locus, e: ThreeEvent<MouseEvent>) => void;
@@ -240,10 +459,15 @@ export function LocusMarkers({
       ordered.map((l) => {
         const p = locusWorldPos(l, room);
         const n = inwardNormal(p.wall);
-        // Float markers slightly off the wall so they never z-fight with it.
         // Yaw that turns a plane's +Z (scene) to face into the room.
         const yaw = Math.atan2(n.x, -n.z);
-        return { locus: l, yaw, world: { x: p.x + n.x * 0.18, y: p.y, z: p.z + n.z * 0.18 } };
+        return {
+          locus: l,
+          yaw,
+          world: { x: p.x + n.x * PLAQUE_OFFSET, y: p.y, z: p.z + n.z * PLAQUE_OFFSET },
+          // The study route is drawn on the floor, a step in from each plaque.
+          floor: { x: p.x + n.x * PATH_INSET, y: 0.03, z: p.z + n.z * PATH_INSET },
+        };
       }),
     [ordered, room]
   );
@@ -251,7 +475,7 @@ export function LocusMarkers({
     <group>
       {showPath && points.length > 1 && (
         <Line
-          points={points.map((p) => toScene({ ...p.world, y: p.world.y - 0.25 }))}
+          points={points.map((p) => toScene(p.floor))}
           color={colors.path}
           lineWidth={2.5}
           dashed
@@ -264,22 +488,33 @@ export function LocusMarkers({
       )}
       {points.map(({ locus, world, yaw }, i) => {
         const active = locus.id === selectedId;
-        const color = active ? colors.locusActive : colors.locus;
         const count = cardCounts?.[locus.id] ?? 0;
         return (
           <group key={locus.id} position={toScene(world)}>
-            <mesh
-              // Restore explicitly: R3F ignores `undefined` props, which left a marker unpickable after its first drag.
-              raycast={draggingId === locus.id ? noRaycast : THREE.Mesh.prototype.raycast}
-              onPointerDown={onMarkerDown ? (e) => onMarkerDown(locus, e) : undefined}
-              onClick={onMarkerClick ? (e) => onMarkerClick(locus, e) : undefined}
-            >
-              <sphereGeometry args={[active ? 0.2 : 0.16, 24, 24]} />
-              <meshStandardMaterial color={color} emissive={color} emissiveIntensity={active ? 0.7 : 0.35} />
-            </mesh>
+            <group rotation={[0, yaw, 0]}>
+              <Plaque
+                label={ghost ? "+" : String(i + 1)}
+                face={
+                  active || ghost
+                    ? colors.locusActive
+                    : results?.[locus.id] === true
+                      ? RECALLED
+                      : results?.[locus.id] === false
+                        ? MISSED
+                        : colors.locus
+                }
+                frame={colors.door}
+                active={active}
+                ghost={ghost}
+                // Restore explicitly: R3F ignores `undefined` props, which left a marker unpickable after its first drag.
+                raycast={draggingId === locus.id ? noRaycast : THREE.Mesh.prototype.raycast}
+                onPointerDown={onMarkerDown ? (e) => onMarkerDown(locus, e) : undefined}
+                onClick={onMarkerClick ? (e) => onMarkerClick(locus, e) : undefined}
+              />
+            </group>
             {count > 0 && <CardStack count={count} yaw={yaw} colors={colors} />}
             {showLabels && (
-              <Html center zIndexRange={[20, 0]} style={{ pointerEvents: "none" }} position={[0, 0.42, 0]}>
+              <MarkerLabel fade={labelFade} pinned={active}>
                 <div
                   className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold shadow-md ${
                     active ? "bg-accent text-accent-foreground" : "bg-primary text-primary-foreground"
@@ -296,7 +531,7 @@ export function LocusMarkers({
                     </span>
                   )}
                 </div>
-              </Html>
+              </MarkerLabel>
             )}
           </group>
         );
@@ -314,7 +549,7 @@ function CardStack({ count, yaw, colors }: { count: number; yaw: number; colors:
         <mesh
           key={k}
           raycast={noRaycast}
-          position={[0.46 + k * 0.025, -0.08 + k * 0.05, 0.02 + k * 0.014]}
+          position={[0.42 + k * 0.025, -0.08 + k * 0.05, 0.01 + k * 0.012]}
           rotation={[0, 0, (k % 2 ? -1 : 1) * 0.05 * k]}
         >
           <boxGeometry args={[0.38, 0.26, 0.01]} />
@@ -325,21 +560,25 @@ function CardStack({ count, yaw, colors }: { count: number; yaw: number; colors:
   );
 }
 
-// Day: warm sun over white marble. Night: dim, cool moonlight.
+// Day: warm sun over white marble. Night: cool moonlight. A key light from the
+// south-east plus a weaker fill from the north-west give all four wall
+// orientations a different shade, so corners and depth read at a glance;
+// ambient stays low (flat ambient is what made every wall the same grey).
 export function SceneLights({ colors }: { colors: SceneColors }) {
   return colors.night ? (
     <>
-      {/* Near-neutral cool light: strongly blue light crushes the red/green of the blue-grey stone. */}
-      <hemisphereLight args={["#dfe6ff", colors.floor, 1.4]} />
-      <ambientLight intensity={0.9} color="#e4eaff" />
-      <directionalLight position={[8, 14, 6]} intensity={1.0} color="#d6e0ff" />
+      <hemisphereLight args={["#c9d5ff", colors.floor, 0.9]} />
+      <ambientLight intensity={0.35} color="#e4eaff" />
+      {/* From the moon's side of the sky (see SceneSky). */}
+      <directionalLight position={[6, 9, -8]} intensity={1.6} color="#dbe4ff" />
+      <directionalLight position={[-5, 6, 7]} intensity={0.45} color="#9fb2ff" />
     </>
   ) : (
     <>
-      {/* Pale horizon tone (not the saturated zenith) so white marble stays white. */}
-      <hemisphereLight args={[colors.horizon, colors.floor, 1.1]} />
-      <ambientLight intensity={0.7} />
-      <directionalLight position={[8, 14, 6]} intensity={1.0} color="#fff4dc" />
+      <hemisphereLight args={["#f1f7ff", colors.floor, 0.95]} />
+      <ambientLight intensity={0.25} />
+      <directionalLight position={[7, 12, 4.5]} intensity={2.3} color="#fff1d6" />
+      <directionalLight position={[-4, 7, -8]} intensity={0.6} color="#dce9ff" />
     </>
   );
 }
