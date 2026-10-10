@@ -1,26 +1,38 @@
 import type { Metadata, Viewport } from "next";
-import { Cormorant_Garamond, Geist_Mono, Plus_Jakarta_Sans } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import SessionWrapper from "@/components/SessionWrapper";
 import Navbar from "@/components/Navbar";
 import { THEME_INIT_SCRIPT } from "@/lib/theme";
 
+// Fonts are committed (app/fonts, SIL OFL) instead of fetched from Google at
+// build time: Google sometimes answers the build machine with
+// fonts.gstatic.com/l/font?kit=...&skey=... URLs whose "&" breaks Turbopack's
+// font import, which failed the Vercel build. Latin variable subsets, the
+// same files next/font/google downloaded.
+
 // Clean geometric sans in the spirit of Quizlet's Hurme.
-const jakarta = Plus_Jakarta_Sans({
+const jakarta = localFont({
+  src: "./fonts/PlusJakartaSans-latin.woff2",
+  weight: "200 800",
   variable: "--font-jakarta",
-  subsets: ["latin"],
+  display: "swap",
 });
 
 // Classical serif for headings (ancient-Greece feel).
-const cormorant = Cormorant_Garamond({
+const cormorant = localFont({
+  src: "./fonts/CormorantGaramond-latin.woff2",
+  weight: "300 700",
   variable: "--font-serif",
-  subsets: ["latin"],
-  weight: ["500", "600", "700"],
+  display: "swap",
+  adjustFontFallback: "Times New Roman",
 });
 
-const geistMono = Geist_Mono({
+const geistMono = localFont({
+  src: "./fonts/GeistMono-latin.woff2",
+  weight: "100 900",
   variable: "--font-geist-mono",
-  subsets: ["latin"],
+  display: "swap",
 });
 
 // Absolute URLs for social cards / canonical links. NEXTAUTH_URL is the
