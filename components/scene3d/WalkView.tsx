@@ -48,6 +48,7 @@ import { buildChoices } from "@/lib/quiz";
 import type { SessionAnswer } from "@/lib/reviewTypes";
 import type { Blueprint } from "@/lib/blueprint";
 import MiniMap, { type MiniMapPose } from "./MiniMap";
+import { furnitureOf, obstacles } from "@/lib/furniture";
 
 // First-person walk mode + guided tour. Movement/collision/focus/tour maths
 // live in lib/walk.ts and lib/scene3d.ts (pure, unit-tested); this file is
@@ -90,6 +91,8 @@ function PlayerRig({
   onNearDoor: (o: Opening | null) => void;
 }) {
   const size = { width: room.width, depth: room.depth };
+  // Solid furniture blocks walking (rugs don't).
+  const blocks = useMemo(() => obstacles(furnitureOf(room)), [room]);
   const lastFocus = useRef<string | null>(null);
   const lastNear = useRef<string | null>(null);
   const exited = useRef(false);
@@ -113,7 +116,7 @@ function PlayerRig({
           throttle: Math.max(-1, Math.min(1, k.throttle + j.throttle)),
           strafe: Math.max(-1, Math.min(1, k.strafe + j.strafe)),
         };
-        pose = stepPlayer(pose, input, delta, size, openings, { speed: WALK_SPEED, radius: PLAYER_RADIUS });
+        pose = stepPlayer(pose, input, delta, size, openings, { speed: WALK_SPEED, radius: PLAYER_RADIUS, obstacles: blocks });
       }
     }
     lookRef.current.yawDelta = 0;

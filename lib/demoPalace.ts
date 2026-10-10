@@ -3,14 +3,20 @@
 import type { Locus, Opening, Room } from "@/types/database";
 import { layoutBlueprint, type Blueprint } from "./blueprint";
 
-const room = (id: string, title: string, x: number, z: number, w: number, d: number, background: string | null, created_at: string) =>
-  ({ id, palace_id: "demo", user_id: "demo", title, width: w, depth: d, height: 3, pos_x: x, pos_z: z, level_id: "L", rotation: 0, background, created_at, metadata: {} }) as unknown as Room;
+const room = (id: string, title: string, x: number, z: number, w: number, d: number, background: string | null, created_at: string, furniture: unknown[] = []) =>
+  ({ id, palace_id: "demo", user_id: "demo", title, width: w, depth: d, height: 3, pos_x: x, pos_z: z, level_id: "L", rotation: 0, background, created_at, metadata: { furniture } }) as unknown as Room;
 
 // Tour order = room order: Atrium -> Garden -> Library, each joined by a door.
 const ROOMS: Room[] = [
-  room("atrium", "Atrium", 0, 0, 8, 6, null, "2026-01-01T00:00:00Z"),
-  room("garden", "Garden", 8, 0, 6, 11, "#2f9e44", "2026-01-02T00:00:00Z"),
-  room("library", "Library", 0, 6, 8, 5, "#3b5bdb", "2026-01-03T00:00:00Z"),
+  room("atrium", "Atrium", 0, 0, 8, 6, null, "2026-01-01T00:00:00Z", [{ id: "f1", kind: "fountain", x: 4, z: 3 }]),
+  room("garden", "Garden", 8, 0, 6, 11, "#2f9e44", "2026-01-02T00:00:00Z", [
+    { id: "f2", kind: "plant", x: 1.2, z: 9.6 },
+    { id: "f3", kind: "statue", x: 3, z: 5.5 },
+  ]),
+  room("library", "Library", 0, 6, 8, 5, "#3b5bdb", "2026-01-03T00:00:00Z", [
+    { id: "f4", kind: "table", x: 4, z: 2.4 },
+    { id: "f5", kind: "bookshelf", x: 5.5, z: 4.6 },
+  ]),
 ];
 
 const SPOTS: Array<[string, Locus["wall"], number]> = [

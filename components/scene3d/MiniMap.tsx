@@ -122,6 +122,9 @@ export default function MiniMap({
           );
         })}
 
+        {plan.furniture.map((f, i) => (
+          <rect key={`f${i}`} x={f.x} y={f.y} width={f.w} height={f.h} rx={0.08} className="pointer-events-none fill-foreground/20" />
+        ))}
         {plan.openings.map((o, i) => (
           <line
             key={i}

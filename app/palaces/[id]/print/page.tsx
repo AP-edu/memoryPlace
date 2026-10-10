@@ -166,6 +166,10 @@ export default function PrintBlueprintPage() {
                 </text>
               </g>
             ))}
+            {/* Furniture footprints: landmarks for rebuilding the room in your head. */}
+            {g.plan!.furniture.map((f, i) => (
+              <rect key={`f${i}`} x={f.x} y={f.y} width={f.w} height={f.h} rx={0.08} fill="#000" fillOpacity={0.12} stroke="#000" strokeOpacity={0.35} strokeWidth={0.04} />
+            ))}
             {g.plan!.openings.map((o, i) => (
               <line
                 key={i}

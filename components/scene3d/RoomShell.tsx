@@ -9,6 +9,8 @@ import { wallSpans } from "@/lib/walk";
 import { cutawayWalls, fromScene, inwardNormal, toScene, tourOrder, WALL_FACES } from "@/lib/scene3d";
 import type { SceneColors } from "./useSceneColors";
 import { isHallway } from "@/lib/hallway";
+import { furnitureOf, type FurnitureItem } from "@/lib/furniture";
+import { RoomFurniture } from "./Furniture";
 
 // Shared 3D room geometry for the room editor, the palace preview and walk
 // mode. Everything is authored in world coords and placed with toScene()
@@ -93,6 +95,11 @@ export function RoomShell({
   onWallMove,
   floorRaycast = false,
   onFloorMove,
+  furniture,
+  furnitureSelectedId,
+  furnitureDraggingId,
+  onFurnitureDown,
+  onFurnitureClick,
 }: {
   room: Room;
   openings: Opening[];
@@ -103,6 +110,12 @@ export function RoomShell({
   onWallMove?: (e: WallPointerEvent) => void;
   floorRaycast?: boolean;
   onFloorMove?: (point: { x: number; y: number; z: number }) => void;
+  /** Live furniture (the studio's unsaved edits); defaults to the room's saved metadata. */
+  furniture?: FurnitureItem[];
+  furnitureSelectedId?: string | null;
+  furnitureDraggingId?: string | null;
+  onFurnitureDown?: (item: FurnitureItem, e: ThreeEvent<PointerEvent>) => void;
+  onFurnitureClick?: (item: FurnitureItem, e: ThreeEvent<MouseEvent>) => void;
 }) {
   const size = { width: room.width, depth: room.depth };
   const wallRefs = useRef<Partial<Record<WallFace, THREE.Group | null>>>({});
@@ -146,9 +159,19 @@ export function RoomShell({
   const hallway = isHallway(room);
   const palette = useMemo(() => roomPalette(room, colors, hallway), [room, colors, hallway]);
   const floorTex = useFloorTexture(palette.floor, room.width + WALL_THICK, room.depth + WALL_THICK);
+  const savedFurniture = useMemo(() => furnitureOf(room), [room]);
 
   return (
     <group>
+      <RoomFurniture
+        items={furniture ?? savedFurniture}
+        roomHeight={room.height}
+        selectedId={furnitureSelectedId}
+        draggingId={furnitureDraggingId}
+        highlight={colors.locusActive}
+        onItemDown={onFurnitureDown}
+        onItemClick={onFurnitureClick}
+      />
       <mesh
         position={toScene({ x: room.width / 2, y: -0.05, z: room.depth / 2 })}
         raycast={floorRaycast ? THREE.Mesh.prototype.raycast : noRaycast}

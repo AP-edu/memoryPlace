@@ -6,6 +6,7 @@ import { canModify } from "@/lib/ownership";
 import { placementUpdates } from "@/lib/roomPlacement";
 import { MAX_ROOM_SIZE } from "@/lib/validate";
 import { lookupFailed, serverError } from "@/lib/apiError";
+import { normalizeFurniture } from "@/lib/furniture";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -42,8 +43,15 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
     }
     updates.title = title.trim();
   }
-  if (background !== undefined) updates.background = background;
-  if (metadata !== undefined) updates.metadata = metadata;
+  if (background !== undefined) {
+    if (background !== null && (typeof background !== "string" || !/^#[0-9a-f]{6}$/i.test(background))) {
+      return NextResponse.json({ error: "background must be #rrggbb or null" }, { status: 400 });
+    }
+    updates.background = background;
+  }
+  if (metadata !== undefined && (metadata === null || typeof metadata !== "object" || Array.isArray(metadata))) {
+    return NextResponse.json({ error: "metadata must be an object" }, { status: 400 });
+  }
   const isPosNum = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n) && n > 0 && n <= MAX_ROOM_SIZE;
   if (width !== undefined) {
     if (!isPosNum(width)) return NextResponse.json({ error: "width must be a positive number" }, { status: 400 });
@@ -56,6 +64,15 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
   if (height !== undefined) {
     if (!isPosNum(height)) return NextResponse.json({ error: "height must be a positive number" }, { status: 400 });
     updates.height = height;
+  }
+  // Furniture always fits the room it ends up in: validate new furniture
+  // against the final size, and re-clamp existing pieces when a room shrinks.
+  const size = { width: (updates.width as number) ?? room.width, depth: (updates.depth as number) ?? room.depth };
+  if (metadata !== undefined) {
+    const meta = metadata as Record<string, unknown>;
+    updates.metadata = "furniture" in meta ? { ...meta, furniture: normalizeFurniture(meta.furniture, size) } : meta;
+  } else if ((updates.width !== undefined || updates.depth !== undefined) && Array.isArray(room.metadata?.furniture)) {
+    updates.metadata = { ...room.metadata, furniture: normalizeFurniture(room.metadata.furniture, size) };
   }
   const placement = await placementUpdates(body as Record<string, unknown>, room.palace_id);
   if ("error" in placement) return NextResponse.json({ error: placement.error }, { status: 400 });

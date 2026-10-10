@@ -2,6 +2,7 @@
 // Convention (AGENTS.md): x -> right, north (+z) at the TOP, so svgY = maxZ - z.
 import { locusWorldPos, openingWidthM, wallLength, wallPoint } from "@/lib/geometry";
 import { inwardNormal, tourOrder } from "@/lib/scene3d";
+import { furnitureOf, itemRect, type FurnitureKind } from "@/lib/furniture";
 import type { Level, Locus, Opening, Room } from "@/types/database";
 
 export interface BlueprintRoom {
@@ -37,12 +38,23 @@ export interface BlueprintOpening {
   y2: number;
 }
 
+/** A furniture footprint on the plan (plan metres, top-left corner + size). */
+export interface BlueprintFurniture {
+  roomId: string;
+  kind: FurnitureKind;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 export interface Blueprint {
   width: number;
   height: number;
   rooms: BlueprintRoom[];
   loci: BlueprintLocus[];
   openings: BlueprintOpening[];
+  furniture: BlueprintFurniture[];
 }
 
 const PAD = 1;
@@ -94,6 +106,16 @@ export function layoutBlueprint(
     });
   }
 
+  const outFurniture: BlueprintFurniture[] = [];
+  for (const room of rooms) {
+    for (const item of furnitureOf(room)) {
+      const r = itemRect(item);
+      // North up: the plan's top edge is the item's max z.
+      const mm = (n: number) => Math.round(n * 1000) / 1000;
+      outFurniture.push({ roomId: room.id, kind: item.kind, x: mm(sx(room.pos_x + r.x0)), y: mm(sy(room.pos_z + r.z1)), w: mm(r.x1 - r.x0), h: mm(r.z1 - r.z0) });
+    }
+  }
+
   const outOpenings: BlueprintOpening[] = [];
   for (const o of openings) {
     const room = roomById.get(o.room_id);
@@ -120,6 +142,7 @@ export function layoutBlueprint(
     rooms: outRooms,
     loci: outLoci,
     openings: outOpenings,
+    furniture: outFurniture,
   };
 }
 

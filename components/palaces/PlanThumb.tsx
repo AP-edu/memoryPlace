@@ -21,6 +21,9 @@ export default function PlanThumb({ plan, className = "" }: { plan: Blueprint; c
           style={r.color ? { fill: r.color, fillOpacity: 0.28 } : undefined}
         />
       ))}
+      {plan.furniture.map((f, i) => (
+        <rect key={`f${i}`} x={f.x} y={f.y} width={f.w} height={f.h} rx={0.08} className="fill-foreground/20" />
+      ))}
       {plan.openings.map((o, i) => (
         <line key={i} x1={o.x1} y1={o.y1} x2={o.x2} y2={o.y2} strokeWidth={stroke * 2.4} className="stroke-accent" />
       ))}

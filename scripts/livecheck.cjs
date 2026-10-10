@@ -447,10 +447,10 @@ async function cleanup(userIds) {
       await page.getByText(/\d+\/\d+ learned/).first().waitFor({ timeout: 10000 });
     });
 
-    await check("palace 3D: renders; clicking a room floor -> + Add loci -> place mode", async () => {
+    await check("studio: renders; clicking a room floor opens it in the studio -> Place loci -> place mode", async () => {
       await page.goto(`${BASE}/palaces/${ids.palace}`);
       await page.waitForLoadState("networkidle");
-      await page.getByRole("tab", { name: "3D Palace" }).click();
+      await page.getByRole("tab", { name: "3D Studio" }).click();
       const canvas = page.locator("canvas").first();
       await canvas.waitFor({ timeout: 20000 });
       await sleep(2500); // dynamic import + shader compile
@@ -460,21 +460,81 @@ async function cleanup(userIds) {
       let selected = false;
       for (const [fx, fy] of [[0.5, 0.6], [0.5, 0.7], [0.45, 0.65], [0.55, 0.55]]) {
         await page.mouse.click(box.x + box.width * fx, box.y + box.height * fy);
-        await sleep(250);
-        if (await page.locator("a", { hasText: "+ Add loci" }).first().isVisible().catch(() => false)) {
+        await sleep(300);
+        if (await page.locator("#studio-title").isVisible().catch(() => false)) {
           selected = true;
           break;
         }
       }
-      await shot(page, "palace-3d");
-      assert(selected, "no room selected by clicking its floor");
-      const link = page.locator("a", { hasText: "+ Add loci" }).first();
-      assert(/\/rooms\/.+\?tool=place/.test(await link.getAttribute("href")), "bad + Add loci href");
+      await shot(page, "studio");
+      assert(selected, "clicking a room floor did not open it in the studio");
+      const link = page.getByRole("link", { name: "Place loci" });
+      assert(/\/rooms\/.+\?tool=place/.test(await link.getAttribute("href")), "bad Place loci href");
       await link.click();
       await page.waitForURL(/\/rooms\/.+\?tool=place/);
       const place = page.getByRole("button", { name: "+ Locus & cards (P)" });
       await place.waitFor();
       assert((await place.getAttribute("aria-pressed")) === "true", "not in place mode");
+    });
+
+    await check("studio: furnish a room — place, rotate (R), remove (Del), all saved", async () => {
+      const roomFurniture = async () => {
+        const rs = await json(await api.get(`${BASE}/api/rooms?palace=${ids.palace}`), 200);
+        return rs.find((r) => r.id === A.id).metadata?.furniture ?? [];
+      };
+      await page.goto(`${BASE}/palaces/${ids.palace}`);
+      await page.waitForLoadState("networkidle");
+      // Select Atrium from its room card, then open the studio (it keeps the selection).
+      await page.getByText(/1\.\s*Atrium/).first().click();
+      await page.getByRole("tab", { name: "3D Studio" }).click();
+      const canvas = page.locator("canvas").first();
+      await canvas.waitFor({ timeout: 20000 });
+      await page.locator("#studio-title").waitFor({ timeout: 10000 });
+      assert((await page.locator("#studio-title").inputValue()) === "Atrium", "studio did not open on Atrium");
+      await sleep(2500); // camera glides to the room
+      const box = await canvas.boundingBox();
+      await page.getByRole("group", { name: "Furniture palette" }).getByRole("button", { name: "Sofa", exact: true }).click();
+      const c = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+      await page.mouse.move(c.x, c.y);
+      await page.mouse.move(c.x + 2, c.y);
+      await page.mouse.click(c.x + 2, c.y);
+      await page.keyboard.press("Escape");
+      await page.getByText("All changes saved").waitFor({ timeout: 8000 });
+      let saved = await roomFurniture();
+      const sofa = saved.find((f) => f.kind === "sofa");
+      assert(sofa, `no sofa saved (${JSON.stringify(saved)})`);
+      assert(sofa.x > 0 && sofa.x < 8 && sofa.z > 0 && sofa.z < 6, `sofa outside the room: ${sofa.x}, ${sofa.z}`);
+      await page.getByRole("button", { name: "Select sofa" }).click();
+      await page.keyboard.press("r");
+      await sleep(1200);
+      saved = await roomFurniture();
+      assert(saved.find((f) => f.id === sofa.id)?.rot === 90, "R did not rotate the sofa");
+      await page.keyboard.press("Delete");
+      await sleep(1200);
+      saved = await roomFurniture();
+      assert(!saved.some((f) => f.id === sofa.id), "Delete did not remove the sofa");
+      await shot(page, "studio-furnished");
+      return `sofa at (${sofa.x}, ${sofa.z}), rotated, removed`;
+    });
+
+    await check("walk: furniture blocks walking (an armchair in the way stops you)", async () => {
+      // Put an armchair in the middle of the Atrium through the API, then walk into it.
+      const rs = await json(await api.get(`${BASE}/api/rooms?palace=${ids.palace}`), 200);
+      const atrium = rs.find((r) => r.id === A.id);
+      await json(
+        await api.put(`${BASE}/api/rooms/${A.id}`, { data: { metadata: { ...atrium.metadata, furniture: [{ id: "chair1", kind: "armchair", x: 4, z: 3, rot: 0 }] } } }),
+        200
+      );
+      await openWalk(page, A.id);
+      await page.evaluate(() => window.__walk.teleport(4, 1, 0, 0)); // south of the chair, facing north
+      await page.keyboard.down("w");
+      await sleep(1500);
+      await page.keyboard.up("w");
+      const pose = await page.evaluate(() => ({ ...window.__walk.pose() }));
+      // Chair front edge is at z = 3 - 0.425; the walker (r 0.35) must stop short of it.
+      assert(pose.z < 3 - 0.425 - 0.3, `walked into the armchair (z ${pose.z.toFixed(2)})`);
+      await json(await api.put(`${BASE}/api/rooms/${A.id}`, { data: { metadata: { ...atrium.metadata, furniture: [] } } }), 200);
+      return `stopped at z ${pose.z.toFixed(2)}`;
     });
 
     // -------------------------------------------------------------- room editor
@@ -920,7 +980,7 @@ async function cleanup(userIds) {
         }
         await page.goto(`${BASE}/palaces/${ids.palace}`);
         await page.waitForLoadState("networkidle");
-        await page.getByRole("tab", { name: "3D Palace" }).click();
+        await page.getByRole("tab", { name: "3D Studio" }).click();
         const canvas = page.locator("canvas").first();
         await canvas.waitFor({ timeout: 20000 });
         await sleep(2000);
