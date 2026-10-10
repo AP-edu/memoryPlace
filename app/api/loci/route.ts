@@ -5,7 +5,8 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { supabase } from "@/lib/supabase";
 import { locusPercent, wallPoint } from "@/lib/geometry";
 import type { WallFace } from "@/types/database";
-import { serverError } from "@/lib/apiError";
+import { lookupFailed, serverError } from "@/lib/apiError";
+import { canModify } from "@/lib/ownership";
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -26,7 +27,11 @@ export async function GET(req: NextRequest) {
     if (ids.length === 0) return NextResponse.json([]);
     query = query.in("room_id", ids);
   } else if (roomId) {
-    // Any authenticated user with a room id can read its loci (walkthrough needs this).
+    // Only the room's owner (or an admin) reads its loci.
+    const { data: room, error: roomError } = await supabase.from("rooms").select("id, user_id").eq("id", roomId).maybeSingle();
+    if (roomError) return lookupFailed("api/loci GET", roomError);
+    if (!room) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    if (!canModify(session, room.user_id)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     query = query.eq("room_id", roomId);
   } else {
     // Bare list stays owner-scoped via parent rooms.

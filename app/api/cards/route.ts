@@ -5,6 +5,7 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { supabase } from "@/lib/supabase";
 import { validateOptionsInput } from "@/lib/quiz";
 import { serverError } from "@/lib/apiError";
+import { canModify } from "@/lib/ownership";
 
 async function locusRoom(locusId: string) {
   const { data: locus, error } = await supabase.from("loci").select("id, room_id").eq("id", locusId).maybeSingle();
@@ -25,8 +26,16 @@ export async function GET(req: NextRequest) {
 
   const locusId = req.nextUrl.searchParams.get("locus");
   const roomId = req.nextUrl.searchParams.get("room");
-  // Any authenticated user with a locus/room id can read its cards (study needs this).
+  // Only the owner of the locus's room (or an admin) reads its cards.
   if (locusId) {
+    let owner;
+    try {
+      owner = await locusRoom(locusId);
+    } catch (e) {
+      return serverError("api/cards GET", e);
+    }
+    if (!owner) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    if (!canModify(session, owner.user_id)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     const { data, error } = await supabase
       .from("cards")
       .select("*")
@@ -37,6 +46,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(data);
   }
   if (roomId) {
+    const { data: room, error: roomError } = await supabase.from("rooms").select("id, user_id").eq("id", roomId).maybeSingle();
+    if (roomError && roomError.code !== "22P02") return serverError("api/cards GET", roomError);
+    if (!room) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    if (!canModify(session, room.user_id)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     const { data: loci, error: lociError } = await supabase.from("loci").select("id").eq("room_id", roomId);
     if (lociError) return serverError("api/cards GET", lociError);
     const ids = (loci ?? []).map((l: { id: string }) => l.id);

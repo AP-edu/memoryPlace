@@ -977,7 +977,11 @@ async function cleanup(userIds) {
           const b = p.getByRole("button", { name: new RegExp(name) }).or(p.getByRole("link", { name: new RegExp(name) })).first();
           if (!(await b.isVisible().catch(() => false))) continue;
           const bb = await b.boundingBox();
-          const onTop = await p.evaluate(({ x, y, name }) => (document.elementFromPoint(x, y)?.textContent ?? "").includes(name), { x: bb.x + bb.width / 2, y: bb.y + bb.height / 2, name });
+          // The control itself (icon-only buttons keep their name in a screen-reader label) must be on top.
+          const onTop = await p.evaluate(({ x, y, name }) => {
+            const el = document.elementFromPoint(x, y)?.closest("button,a");
+            return !!el && (el.textContent ?? "").includes(name);
+          }, { x: bb.x + bb.width / 2, y: bb.y + bb.height / 2, name });
           assert(onTop, `a 3D label covers "${name}"`);
         }
         await shot(p, "phone-walk");
