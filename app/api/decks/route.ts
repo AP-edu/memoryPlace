@@ -4,6 +4,7 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { getSupabase } from "@/lib/supabase";
 import { canModify } from "@/lib/ownership";
 import { normalizeTags } from "@/lib/deckLink";
+import { serverError } from "@/lib/apiError";
 
 /** Decks are standalone (palace = course): optional palace link + tags. */
 export async function GET(req: NextRequest) {
@@ -27,7 +28,7 @@ export async function GET(req: NextRequest) {
   if (courseId) query = query.eq("course_id", courseId);
 
   const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return serverError("api/decks GET", error);
 
   // Per-deck card counts so the list can show size + how many are anchored.
   const ids = (data ?? []).map((d: { id: string }) => d.id);
@@ -67,6 +68,6 @@ export async function POST(req: NextRequest) {
     .select()
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return serverError("api/decks POST", error);
   return NextResponse.json(data, { status: 201 });
 }

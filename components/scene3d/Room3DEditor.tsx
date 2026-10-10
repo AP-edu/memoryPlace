@@ -430,11 +430,12 @@ export default function Room3DEditor({
               </p>
             )}
             {lastAction && (
-              <p className="pointer-events-auto flex items-center gap-3 rounded-lg border border-border bg-card/95 px-3 py-1.5 text-sm shadow-lg">
+              // Only Undo takes clicks: the message must not block grabbing a marker behind it.
+              <p className="flex items-center gap-3 rounded-lg border border-border bg-card/95 px-3 py-1.5 text-sm shadow-lg">
                 {lastAction.message}
                 <button
                   type="button"
-                  className="font-semibold text-link hover:underline"
+                  className="pointer-events-auto font-semibold text-link hover:underline"
                   onClick={() => {
                     const a = lastAction;
                     setLastAction(null);

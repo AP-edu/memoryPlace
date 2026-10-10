@@ -4,11 +4,18 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { supabase } from "@/lib/supabase";
 import { validateOptionsInput } from "@/lib/quiz";
+import { serverError } from "@/lib/apiError";
 
 async function locusRoom(locusId: string) {
-  const { data: locus } = await supabase.from("loci").select("id, room_id").eq("id", locusId).single();
+  const { data: locus, error } = await supabase.from("loci").select("id, room_id").eq("id", locusId).maybeSingle();
+  if (error && error.code !== "22P02") throw error;
   if (!locus) return null;
-  const { data: room } = await supabase.from("rooms").select("id, user_id").eq("id", locus.room_id).single();
+  const { data: room, error: roomError } = await supabase
+    .from("rooms")
+    .select("id, user_id")
+    .eq("id", locus.room_id)
+    .maybeSingle();
+  if (roomError) throw roomError;
   return room;
 }
 
@@ -26,12 +33,12 @@ export async function GET(req: NextRequest) {
       .eq("locus_id", locusId)
       .order("position", { ascending: true })
       .order("created_at", { ascending: true });
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return serverError("api/cards GET", error);
     return NextResponse.json(data);
   }
   if (roomId) {
     const { data: loci, error: lociError } = await supabase.from("loci").select("id").eq("room_id", roomId);
-    if (lociError) return NextResponse.json({ error: lociError.message }, { status: 500 });
+    if (lociError) return serverError("api/cards GET", lociError);
     const ids = (loci ?? []).map((l: { id: string }) => l.id);
     if (ids.length === 0) return NextResponse.json([]);
     const { data, error } = await supabase
@@ -40,7 +47,7 @@ export async function GET(req: NextRequest) {
       .in("locus_id", ids)
       .order("position", { ascending: true })
       .order("created_at", { ascending: true });
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return serverError("api/cards GET", error);
     return NextResponse.json(data);
   }
 
@@ -49,7 +56,7 @@ export async function GET(req: NextRequest) {
     .select("*")
     .eq("user_id", session.user.id)
     .order("created_at", { ascending: false });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return serverError("api/cards GET", error);
   return NextResponse.json(data);
 }
 
@@ -98,6 +105,6 @@ export async function POST(req: NextRequest) {
     .select()
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return serverError("api/cards POST", error);
   return NextResponse.json(data, { status: 201 });
 }

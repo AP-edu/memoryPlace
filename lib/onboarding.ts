@@ -6,7 +6,6 @@
 export const LOCI_GOAL = 5;
 /** Stored step value meaning "the user has opened the 3D walk". */
 export const WALKED_STEP = 3;
-export const MAX_STEP = 5;
 
 export interface OnboardingFacts {
   palaces: number;
@@ -52,6 +51,9 @@ export const ONBOARDING_STEPS: OnboardingStep[] = [
     cta: "Start studying",
   },
 ];
+
+/** Largest storable users.onboarding_step: one per step, 1-indexed (0 = none acknowledged). */
+export const MAX_STEP = ONBOARDING_STEPS.length;
 
 export interface OnboardingProgress {
   done: boolean[];

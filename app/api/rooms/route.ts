@@ -5,6 +5,7 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { supabase } from "@/lib/supabase";
 import { defaultLevelId, placementUpdates } from "@/lib/roomPlacement";
 import { isPosNum, MAX_ROOM_SIZE } from "@/lib/validate";
+import { serverError } from "@/lib/apiError";
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -16,7 +17,7 @@ export async function GET(req: NextRequest) {
   if (palaceId) query = query.eq("palace_id", palaceId);
 
   const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return serverError("api/rooms GET", error);
 
   return NextResponse.json(data);
 }
@@ -72,6 +73,6 @@ export async function POST(req: NextRequest) {
     .select()
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return serverError("api/rooms POST", error);
   return NextResponse.json(data, { status: 201 });
 }

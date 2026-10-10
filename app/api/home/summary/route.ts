@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { supabase } from "@/lib/supabase";
 import { buildHomeSummary } from "@/lib/homeSummary";
+import { serverError } from "@/lib/apiError";
 
 // Home-screen summary: due counts, continue target, palace card/room counts,
 // streak and average score — one round trip for /home.
@@ -16,19 +17,19 @@ export async function GET(req: NextRequest) {
     .select("id, title")
     .eq("user_id", userId)
     .order("created_at", { ascending: true });
-  if (palacesError) return NextResponse.json({ error: palacesError.message }, { status: 500 });
+  if (palacesError) return serverError("api/home/summary GET", palacesError);
 
   const { data: rooms, error: roomsError } = await supabase
     .from("rooms")
     .select("id, palace_id")
     .eq("user_id", userId);
-  if (roomsError) return NextResponse.json({ error: roomsError.message }, { status: 500 });
+  if (roomsError) return serverError("api/home/summary GET", roomsError);
   const roomIds = (rooms ?? []).map((r) => r.id);
 
   let loci: { id: string; room_id: string }[] = [];
   if (roomIds.length > 0) {
     const { data, error } = await supabase.from("loci").select("id, room_id").in("room_id", roomIds);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return serverError("api/home/summary GET", error);
     loci = data ?? [];
   }
   const locusIds = loci.map((l) => l.id);
@@ -36,7 +37,7 @@ export async function GET(req: NextRequest) {
   let cards: { id: string; locus_id: string }[] = [];
   if (locusIds.length > 0) {
     const { data, error } = await supabase.from("cards").select("id, locus_id").in("locus_id", locusIds);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return serverError("api/home/summary GET", error);
     cards = data ?? [];
   }
   const cardIds = cards.map((c) => c.id);
@@ -48,18 +49,18 @@ export async function GET(req: NextRequest) {
       .select("card_id, due_at")
       .eq("user_id", userId)
       .in("card_id", cardIds);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return serverError("api/home/summary GET", error);
     reviews = data ?? [];
   }
 
   // Deck world: counts + how many flashcards still lack a palace anchor.
   const { data: decks, error: decksError } = await supabase.from("decks").select("id").eq("owner", userId);
-  if (decksError) return NextResponse.json({ error: decksError.message }, { status: 500 });
+  if (decksError) return serverError("api/home/summary GET", decksError);
   let flashcards: { deck_id: string; source_card_id: string | null }[] = [];
   const deckIds = (decks ?? []).map((d) => d.id);
   if (deckIds.length > 0) {
     const { data, error } = await supabase.from("flashcards").select("deck_id, source_card_id").in("deck_id", deckIds);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return serverError("api/home/summary GET", error);
     flashcards = data ?? [];
   }
 
@@ -69,7 +70,7 @@ export async function GET(req: NextRequest) {
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .limit(100);
-  if (sessionsError) return NextResponse.json({ error: sessionsError.message }, { status: 500 });
+  if (sessionsError) return serverError("api/home/summary GET", sessionsError);
 
   // Onboarding state: persisted on the user row; the deep-link room is the one
   // with the most loci so the tour lands somewhere that already has content.

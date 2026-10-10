@@ -168,3 +168,50 @@ export function tappableDoors(openings: BlueprintOpening[], currentRoomId: strin
     .filter((o) => o.targetRoomId && o.targetRoomId !== currentRoomId)
     .sort((a, b) => Number(a.roomId === currentRoomId) - Number(b.roomId === currentRoomId));
 }
+
+export type MapTarget = { kind: "locus"; n: number } | { kind: "room"; roomId: string };
+
+function segmentDistance(p: { x: number; y: number }, o: Pick<BlueprintOpening, "x1" | "y1" | "x2" | "y2">): number {
+  const dx = o.x2 - o.x1;
+  const dy = o.y2 - o.y1;
+  const len2 = dx * dx + dy * dy;
+  const t = len2 > 0 ? Math.max(0, Math.min(1, ((p.x - o.x1) * dx + (p.y - o.y1) * dy) / len2)) : 0;
+  return Math.hypot(p.x - (o.x1 + t * dx), p.y - (o.y1 + t * dy));
+}
+
+/**
+ * Resolve a minimap tap at plan point `p` to the NEAREST target within `hit`
+ * (plan metres): a locus in the current room (jump to it), a locus elsewhere
+ * (open its room), or a linked door (open the room behind it, measured to the
+ * door segment). Tap circles are generous and overlap, so paint order alone
+ * would let a locus hung beside a door swallow the door's tap (or vice versa).
+ */
+export function pickMapTarget(
+  plan: Pick<Blueprint, "loci" | "openings">,
+  currentRoomId: string,
+  p: { x: number; y: number },
+  hit: number,
+  enabled: { loci: boolean; rooms: boolean }
+): MapTarget | null {
+  let best: MapTarget | null = null;
+  let bestD = hit;
+  for (const l of plan.loci) {
+    const inCurrent = l.roomId === currentRoomId;
+    if (inCurrent ? !enabled.loci : !enabled.rooms) continue;
+    const d = Math.hypot(p.x - l.x, p.y - l.y);
+    if (d <= bestD) {
+      bestD = d;
+      best = inCurrent ? { kind: "locus", n: l.n } : { kind: "room", roomId: l.roomId };
+    }
+  }
+  if (enabled.rooms) {
+    for (const o of tappableDoors(plan.openings, currentRoomId)) {
+      const d = segmentDistance(p, o);
+      if (d < bestD) {
+        bestD = d;
+        best = { kind: "room", roomId: o.targetRoomId as string };
+      }
+    }
+  }
+  return best;
+}

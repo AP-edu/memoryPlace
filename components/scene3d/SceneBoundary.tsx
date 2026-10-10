@@ -93,9 +93,11 @@ export function SceneGate({
   if (!status.ok) {
     return <SceneFallback title={title} backHref={backHref} backLabel={backLabel} />;
   }
+  // `isolate` keeps drei <Html> labels (z-index up to ~20) inside the canvas's
+  // own stacking layer, so HUD panels, card forms and snackbars stay on top.
   return (
     <SceneErrorBoundary title={title} backHref={backHref} backLabel={backLabel}>
-      {children}
+      <div className="isolate h-full w-full">{children}</div>
     </SceneErrorBoundary>
   );
 }

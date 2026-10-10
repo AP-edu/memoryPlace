@@ -4,6 +4,7 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { supabase } from "@/lib/supabase";
 import { MAX_STEP } from "@/lib/onboarding";
 import { isValidEmail, normalizeEmail } from "@/lib/email";
+import { serverError } from "@/lib/apiError";
 
 // The signed-in user's own settings: display name, email, and guided-onboarding
 // state (stored server-side so it follows the user across devices).
@@ -17,7 +18,7 @@ export async function GET() {
     .select("name, email, password, onboarded_at, onboarding_step")
     .eq("id", session.user.id)
     .maybeSingle();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return serverError("api/profile GET", error);
   return NextResponse.json({
     name: data?.name ?? "",
     email: data?.email ?? "",
@@ -33,7 +34,7 @@ export async function GET() {
  *   name: string                   — display name (1..80 chars)
  *   email: string                  — normalized + validated; 409 if taken; not allowed for Google-linked
  *                                    accounts (Google sign-in links by email)
- *   onboarding_step: integer 0..5  — furthest step acknowledged (only ever increases unless reset)
+ *   onboarding_step: integer 0..4  — furthest step acknowledged (only ever increases unless reset)
  *   onboarded: true | false        — true stamps onboarded_at=now(); false replays the tour (clears both)
  */
 export async function PUT(req: NextRequest) {
@@ -92,7 +93,7 @@ export async function PUT(req: NextRequest) {
   if (error) {
     // Unique index on lower(email): another account already uses it.
     if (error.code === "23505") return NextResponse.json({ error: "Email already registered" }, { status: 409 });
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError("api/profile PUT", error);
   }
   return NextResponse.json(data);
 }

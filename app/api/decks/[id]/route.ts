@@ -4,6 +4,7 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { getSupabase } from "@/lib/supabase";
 import { canModify } from "@/lib/ownership";
 import { normalizeTags } from "@/lib/deckLink";
+import { serverError } from "@/lib/apiError";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -58,7 +59,7 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
   }
 
   const { data, error } = await getSupabase().from("decks").update(updates).eq("id", id).select().single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return serverError("api/decks/[id] PUT", error);
 
   return NextResponse.json(data);
 }
@@ -79,10 +80,10 @@ export async function DELETE(req: NextRequest, { params }: RouteContext) {
   let { error } = await db.from("decks").delete().eq("id", id);
   if (error?.code === "23503") {
     const f = await db.from("flashcards").delete().eq("deck_id", id);
-    if (f.error) return NextResponse.json({ error: f.error.message }, { status: 500 });
+    if (f.error) return serverError("api/decks/[id] DELETE", f.error);
     ({ error } = await db.from("decks").delete().eq("id", id));
   }
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return serverError("api/decks/[id] DELETE", error);
 
   return NextResponse.json({ message: "Deleted" });
 }

@@ -97,7 +97,7 @@ export function RoomShell({
     <group>
       <mesh
         position={toScene({ x: room.width / 2, y: -0.05, z: room.depth / 2 })}
-        raycast={floorRaycast ? undefined : noRaycast}
+        raycast={floorRaycast ? THREE.Mesh.prototype.raycast : noRaycast}
         onPointerMove={onFloorMove ? (e) => onFloorMove(fromScene(e.point)) : undefined}
       >
         <boxGeometry args={[room.width + WALL_THICK, 0.1, room.depth + WALL_THICK]} />
@@ -269,7 +269,8 @@ export function LocusMarkers({
         return (
           <group key={locus.id} position={toScene(world)}>
             <mesh
-              raycast={draggingId === locus.id ? noRaycast : undefined}
+              // Restore explicitly: R3F ignores `undefined` props, which left a marker unpickable after its first drag.
+              raycast={draggingId === locus.id ? noRaycast : THREE.Mesh.prototype.raycast}
               onPointerDown={onMarkerDown ? (e) => onMarkerDown(locus, e) : undefined}
               onClick={onMarkerClick ? (e) => onMarkerClick(locus, e) : undefined}
             >

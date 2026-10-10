@@ -7,6 +7,7 @@ import { canModify } from "@/lib/ownership";
 import { gradeReview, isDue, type ReviewSnapshot } from "@/lib/srs";
 import type { ReviewItem } from "@/lib/reviewTypes";
 import type { Card, CardReview, Locus, Room } from "@/types/database";
+import { serverError } from "@/lib/apiError";
 
 async function requireOwner(
   kind: "room" | "palace",
@@ -55,7 +56,7 @@ async function deckQueue(deckId: string, session: Session) {
     .eq("deck_id", deckId)
     .order("created_at", { ascending: true })
     .order("id", { ascending: true });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return serverError("api/reviews", error);
   const cards = (flashcards ?? []) as Array<{
     id: string; question: string; answer: string; owner: string; source_card_id: string | null; created_at: string;
   }>;
@@ -152,11 +153,11 @@ export async function GET(req: NextRequest) {
       .select("*")
       .eq("palace_id", id)
       .order("created_at", { ascending: true });
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return serverError("api/reviews GET", error);
     rooms = data ?? [];
   } else {
     const { data, error } = await supabase.from("rooms").select("*").eq("id", id).single();
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return serverError("api/reviews GET", error);
     if (!data) return NextResponse.json({ error: "Not found" }, { status: 404 });
     rooms = [data];
   }
@@ -170,7 +171,7 @@ export async function GET(req: NextRequest) {
     .select("*")
     .in("room_id", roomIds)
     .order("position", { ascending: true });
-  if (lociError) return NextResponse.json({ error: lociError.message }, { status: 500 });
+  if (lociError) return serverError("api/reviews GET", lociError);
 
   const lociList: Locus[] = loci ?? [];
   const locusIds = lociList.map((l) => l.id);
@@ -179,7 +180,7 @@ export async function GET(req: NextRequest) {
   let cards: Card[] = [];
   if (locusIds.length > 0) {
     const { data, error } = await supabase.from("cards").select("*").in("locus_id", locusIds);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return serverError("api/reviews GET", error);
     cards = data ?? [];
   }
 
@@ -190,7 +191,7 @@ export async function GET(req: NextRequest) {
       .select("*")
       .eq("user_id", session.user.id)
       .in("card_id", cards.map((c) => c.id));
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return serverError("api/reviews GET", error);
     reviews = data ?? [];
   }
   const reviewByCard = new Map(reviews.map((r) => [r.card_id, r]));
@@ -291,7 +292,7 @@ export async function POST(req: NextRequest) {
     .select()
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return serverError("api/reviews POST", error);
   return NextResponse.json(saved);
 }
 /**
@@ -346,6 +347,6 @@ export async function PUT(req: NextRequest) {
     .upsert(row, { onConflict: "card_id" })
     .select()
     .single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return serverError("api/reviews PUT", error);
   return NextResponse.json(saved);
 }

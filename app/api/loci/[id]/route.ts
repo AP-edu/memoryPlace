@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { canModify } from "@/lib/ownership";
 import { locusPercent } from "@/lib/geometry";
 import type { WallFace } from "@/types/database";
+import { lookupFailed, serverError } from "@/lib/apiError";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -24,8 +25,9 @@ export async function GET(req: NextRequest, { params }: RouteContext) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { data: locus, error } = await supabase.from("loci").select("*").eq("id", id).single();
-  if (error || !locus) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  const { data: locus, error } = await supabase.from("loci").select("*").eq("id", id).maybeSingle();
+  if (error) return lookupFailed("api/loci/[id] GET", error);
+  if (!locus) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const owner = await roomOwnerAndSize(id);
   if (!owner?.owner || !canModify(session, owner.owner)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -39,7 +41,8 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { data: locus } = await supabase.from("loci").select("*").eq("id", id).single();
+  const { data: locus, error: lookupError } = await supabase.from("loci").select("*").eq("id", id).maybeSingle();
+  if (lookupError) return lookupFailed("api/loci/[id] PUT", lookupError);
   if (!locus) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const owner = await roomOwnerAndSize(id);
   if (!owner?.owner || !canModify(session, owner.owner)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -82,7 +85,7 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
   }
 
   const { data, error } = await supabase.from("loci").update(updates).eq("id", id).select().single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return serverError("api/loci/[id] PUT", error);
 
   return NextResponse.json(data);
 }
@@ -92,13 +95,14 @@ export async function DELETE(req: NextRequest, { params }: RouteContext) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { data: locus } = await supabase.from("loci").select("*").eq("id", id).single();
+  const { data: locus, error: lookupError } = await supabase.from("loci").select("*").eq("id", id).maybeSingle();
+  if (lookupError) return lookupFailed("api/loci/[id] DELETE", lookupError);
   if (!locus) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const owner = await roomOwnerAndSize(id);
   if (!owner?.owner || !canModify(session, owner.owner)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { error } = await supabase.from("loci").delete().eq("id", id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return serverError("api/loci/[id] DELETE", error);
 
   return NextResponse.json({ message: "Deleted" });
 }

@@ -9,13 +9,25 @@ import type { Card } from "@/types/database";
 
 export type LinkResult = { ok: true } | { ok: false; status: number; error: string };
 
+/** Log the DB error; callers only ever see a generic 500 (no PG message leakage). */
+function dbFail(where: string, error: unknown): LinkResult {
+  console.error(where, error);
+  return { ok: false, status: 500, error: "Request failed" };
+}
+
+/** Malformed ids (PG 22P02) mean "no such row"; any other DB error throws (Next answers a bare 500). */
+function rowOrThrow<R extends { data: unknown; error: { code?: string } | null }>(r: R): R["data"] {
+  if (r.error && r.error.code !== "22P02") throw r.error;
+  return r.data;
+}
+
 /** Room owner for a card (cards are owned through locus -> room). */
 export async function cardRoomOwner(cardId: string): Promise<string | null> {
-  const { data: card } = await supabase.from("cards").select("locus_id").eq("id", cardId).maybeSingle();
+  const card = rowOrThrow(await supabase.from("cards").select("locus_id").eq("id", cardId).maybeSingle());
   if (!card) return null;
-  const { data: locus } = await supabase.from("loci").select("room_id").eq("id", card.locus_id).maybeSingle();
+  const locus = rowOrThrow(await supabase.from("loci").select("room_id").eq("id", card.locus_id).maybeSingle());
   if (!locus) return null;
-  const { data: room } = await supabase.from("rooms").select("user_id").eq("id", locus.room_id).maybeSingle();
+  const room = rowOrThrow(await supabase.from("rooms").select("user_id").eq("id", locus.room_id).maybeSingle());
   return room?.user_id ?? null;
 }
 
@@ -36,7 +48,7 @@ export async function linkPair(flashcardId: string, cardId: string): Promise<Lin
   if (first.error) {
     return first.error.code === "23505"
       ? { ok: false, status: 409, error: "Card is already linked to another flashcard" }
-      : { ok: false, status: 500, error: first.error.message };
+      : dbFail("linkPair", first.error);
   }
   const second = await supabase.from("cards").update({ source_flashcard_id: flashcardId }).eq("id", cardId);
   if (second.error) {
@@ -44,7 +56,7 @@ export async function linkPair(flashcardId: string, cardId: string): Promise<Lin
     await supabase.from("flashcards").update({ source_card_id: null }).eq("id", flashcardId);
     return second.error.code === "23505"
       ? { ok: false, status: 409, error: "Flashcard is already linked to another card" }
-      : { ok: false, status: 500, error: second.error.message };
+      : dbFail("linkPair", second.error);
   }
   return { ok: true };
 }
@@ -62,11 +74,11 @@ export async function unlinkPair(ids: { flashcardId?: string; cardId?: string })
   }
   if (flashcardId) {
     const r = await supabase.from("flashcards").update({ source_card_id: null }).eq("id", flashcardId);
-    if (r.error) return { ok: false, status: 500, error: r.error.message };
+    if (r.error) return dbFail("unlinkPair", r.error);
   }
   if (cardId) {
     const r = await supabase.from("cards").update({ source_flashcard_id: null }).eq("id", cardId);
-    if (r.error) return { ok: false, status: 500, error: r.error.message };
+    if (r.error) return dbFail("unlinkPair", r.error);
   }
   return { ok: true };
 }
@@ -81,7 +93,7 @@ export async function pushContent(
     const { data: f } = await supabase.from("flashcards").select("question, answer").eq("id", flashcardId).maybeSingle();
     if (!f) return { ok: false, status: 404, error: "Flashcard not found" };
     const r = await supabase.from("cards").update(flashcardToCardContent(f)).eq("id", cardId);
-    return r.error ? { ok: false, status: 500, error: r.error.message } : { ok: true };
+    return r.error ? dbFail("pushContent", r.error) : { ok: true };
   }
   const { data: c } = await supabase.from("cards").select("front, back").eq("id", cardId).maybeSingle();
   if (!c) return { ok: false, status: 404, error: "Card not found" };
@@ -89,5 +101,5 @@ export async function pushContent(
     .from("flashcards")
     .update(cardToFlashcardContent(c as Pick<Card, "front" | "back">))
     .eq("id", flashcardId);
-  return r.error ? { ok: false, status: 500, error: r.error.message } : { ok: true };
+  return r.error ? dbFail("pushContent", r.error) : { ok: true };
 }
