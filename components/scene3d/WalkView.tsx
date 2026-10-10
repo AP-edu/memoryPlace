@@ -267,7 +267,12 @@ function NavChevrons({
   );
 }
 
-function Joystick({ joyRef }: { joyRef: React.MutableRefObject<MoveInput> }) {
+/**
+ * Touch joystick (coarse pointers only). `hidden` (a bottom card is open) takes
+ * effect on release, so a card that opens mid-push never yanks the stick from
+ * under the thumb.
+ */
+function Joystick({ joyRef, hidden = false }: { joyRef: React.MutableRefObject<MoveInput>; hidden?: boolean }) {
   const [knob, setKnob] = useState<{ x: number; y: number } | null>(null);
   const origin = useRef<{ x: number; y: number; id: number } | null>(null);
   const R = 48;
@@ -289,6 +294,14 @@ function Joystick({ joyRef }: { joyRef: React.MutableRefObject<MoveInput> }) {
     setKnob(null);
     joyRef.current = { throttle: 0, strafe: 0 };
   }
+  // Never leave a push behind when the stick unmounts (route change mid-drag).
+  useEffect(
+    () => () => {
+      joyRef.current = { throttle: 0, strafe: 0 };
+    },
+    [joyRef]
+  );
+  if (hidden && !knob) return null;
   return (
     <div
       aria-label="Move joystick"
@@ -689,6 +702,8 @@ export default function WalkView({
   }
 
   const focused = !tour && focusedId ? items.find((i) => i.locus.id === focusedId) ?? null : null;
+  /** A bottom card owns the bottom of the screen (phones hide the minimap + joystick under it). */
+  const cardOpen = !!tour || !!summary || (!!focused && dismissedId !== focused.locus.id);
   const focusedCards = focused ? cards.filter((c) => c.locus_id === focused.locus.id) : [];
   const focusedNumber = focused ? stops.find((s) => s.locus.id === focused.locus.id)?.locusIndex ?? 0 : 0;
   const lociCount = new Set(stops.map((s) => s.locus.id)).size;
@@ -804,7 +819,7 @@ export default function WalkView({
       </div>
 
       {levelPlan && (
-        <div className={`absolute bottom-4 right-4 z-10 ${tour || focused ? "max-sm:hidden" : ""}`}>
+        <div className={`absolute bottom-4 right-4 z-10 ${cardOpen ? "max-sm:hidden" : ""}`}>
           <MiniMap
             plan={levelPlan}
             currentRoomId={room.id}
@@ -965,7 +980,7 @@ export default function WalkView({
         </div>
       )}
 
-      <Joystick joyRef={joyRef} />
+      <Joystick joyRef={joyRef} hidden={cardOpen} />
     </div>
   );
 }

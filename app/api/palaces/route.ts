@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { supabase } from "@/lib/supabase";
+import { serverError } from "@/lib/apiError";
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -14,7 +15,7 @@ export async function GET(req: NextRequest) {
   let query = supabase.from("palaces").select("*").order("created_at", { ascending: false });
   if (!all) query = query.eq("user_id", session.user.id);
   const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return serverError("api/palaces GET", error);
 
   return NextResponse.json(data);
 }
@@ -41,7 +42,7 @@ export async function POST(req: NextRequest) {
     .select()
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return serverError("api/palaces POST", error);
 
   // Every palace starts with a ground floor for the grid editor (best effort).
   const { error: levelError } = await supabase

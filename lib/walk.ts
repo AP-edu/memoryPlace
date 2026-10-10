@@ -62,12 +62,16 @@ export function forwardVec(yaw: number, pitch = 0): { x: number; y: number; z: n
 export function wallSpans(
   size: RoomSize,
   wall: WallFace,
-  openings: Opening[]
+  openings: Opening[],
+  /** Extra clearance (metres) kept free on each side of every gap. */
+  marginWorld = 0
 ): Array<{ from: number; to: number }> {
+  const len = wallLength(wall, size);
+  const margin = len > 0 ? marginWorld / len : 0;
   const gaps = openings
     .filter((o) => o.wall === wall)
     .map((o) => {
-      const half = openingHalfFraction(o, size);
+      const half = openingHalfFraction(o, size) + margin;
       const c = clamp01(o.wall_offset ?? 0.5);
       return { from: Math.max(0, c - half), to: Math.min(1, c + half) };
     })
@@ -80,6 +84,22 @@ export function wallSpans(
   }
   if (cursor < 1) spans.push({ from: cursor, to: 1 });
   return spans;
+}
+
+/**
+ * Map `t` (0..1 along the wall's SOLID length, gaps skipped) to a wall offset.
+ * With no gaps this is the identity, so callers can plan in "solid" space.
+ */
+export function solidOffset(t: number, spans: Array<{ from: number; to: number }>): number {
+  const solid = spans.reduce((sum, sp) => sum + (sp.to - sp.from), 0);
+  if (solid <= 0) return clamp01(t);
+  let remaining = clamp01(t) * solid;
+  for (const sp of spans) {
+    const w = sp.to - sp.from;
+    if (remaining <= w) return sp.from + remaining;
+    remaining -= w;
+  }
+  return spans[spans.length - 1].to;
 }
 
 /** Opening whose gap contains `offset` (0..1), expanded by a world-unit margin. */

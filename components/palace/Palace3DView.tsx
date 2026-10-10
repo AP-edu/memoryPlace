@@ -76,11 +76,13 @@ export default function Palace3DView({
               key={room.id}
               position={toScene({ x: offset.x, y: 0, z: offset.z })}
               onClick={(e) => {
+                if (e.delta > 4) return; // end of an orbit drag, not a click
                 e.stopPropagation();
                 onSelect?.(room.id);
               }}
             >
-              <RoomShell room={room} openings={roomOpenings} colors={colors} cutaway />
+              {/* Floor is pickable here: it's the natural click target for "select this room". */}
+              <RoomShell room={room} openings={roomOpenings} colors={colors} cutaway floorRaycast />
               <LocusMarkers
                 room={room}
                 loci={loci.filter((l) => l.room_id === room.id)}

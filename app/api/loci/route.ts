@@ -5,6 +5,7 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { supabase } from "@/lib/supabase";
 import { locusPercent, wallPoint } from "@/lib/geometry";
 import type { WallFace } from "@/types/database";
+import { serverError } from "@/lib/apiError";
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -20,7 +21,7 @@ export async function GET(req: NextRequest) {
       .select("id")
       .eq("palace_id", palaceId)
       .eq("user_id", session.user.id);
-    if (roomsError) return NextResponse.json({ error: roomsError.message }, { status: 500 });
+    if (roomsError) return serverError("api/loci GET", roomsError);
     const ids = (rooms ?? []).map((r: { id: string }) => r.id);
     if (ids.length === 0) return NextResponse.json([]);
     query = query.in("room_id", ids);
@@ -36,7 +37,7 @@ export async function GET(req: NextRequest) {
   }
 
   const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return serverError("api/loci GET", error);
 
   return NextResponse.json(data);
 }
@@ -99,6 +100,6 @@ export async function POST(req: NextRequest) {
     .select()
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return serverError("api/loci POST", error);
   return NextResponse.json(data, { status: 201 });
 }

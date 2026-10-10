@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { LOCI_GOAL, ONBOARDING_STEPS, onboardingProgress, WALKED_STEP, type OnboardingFacts } from "./onboarding";
+import { LOCI_GOAL, MAX_STEP, ONBOARDING_STEPS, onboardingProgress, WALKED_STEP, type OnboardingFacts } from "./onboarding";
 
 const base: OnboardingFacts = { palaces: 0, rooms: 0, loci: 0, cards: 0, hasSession: false, storedStep: null };
 
 describe("onboardingProgress", () => {
+  it("caps the stored step at one per overlay step", () => {
+    expect(MAX_STEP).toBe(ONBOARDING_STEPS.length);
+    expect(WALKED_STEP).toBeLessThanOrEqual(MAX_STEP);
+  });
   it("starts at build for a brand-new user", () => {
     const p = onboardingProgress(base);
     expect(p.current).toBe(0);

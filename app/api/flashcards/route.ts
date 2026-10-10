@@ -4,6 +4,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { getSupabase } from "@/lib/supabase";
 import { canModify } from "@/lib/ownership";
+import { serverError } from "@/lib/apiError";
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -22,7 +23,7 @@ export async function GET(req: NextRequest) {
   }
 
   const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return serverError("api/flashcards GET", error);
 
   return NextResponse.json(data);
 }
@@ -31,9 +32,9 @@ export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { question, answer, deck_id } = await req.json();
-  if (!question || !answer || !deck_id) {
-    return NextResponse.json({ error: "Question, answer, and deck_id required" }, { status: 400 });
+  const { question, answer, deck_id } = await req.json().catch(() => ({}));
+  if (!deck_id || typeof question !== "string" || typeof answer !== "string" || !question.trim() || !answer.trim()) {
+    return NextResponse.json({ error: "Question, answer (non-empty strings), and deck_id required" }, { status: 400 });
   }
 
   const { data: deck } = await getSupabase()
@@ -52,6 +53,6 @@ export async function POST(req: NextRequest) {
     .select()
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return serverError("api/flashcards POST", error);
   return NextResponse.json(data, { status: 201 });
 }

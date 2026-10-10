@@ -11,5 +11,5 @@ End the session with a PC handoff. Do all of these, in order:
 4. Write the handoff summary to the user with exactly these headings:
    - **Branch / commits:** what to pull on the PC.
    - **Done here:** what was implemented + `/check` result.
-   - **Needs the PC:** `npm run build`, FPS + live-click check of any 3D scene, and the green verdict (per AGENTS.md, laptop sessions never close out 3D work as green).
+   - **Needs the PC:** `npm run build && npm run livecheck` (plus `-- --gpu=igpu` for the integrated-GPU FPS verdict), new livecheck coverage for any new UI, and the green verdict (per AGENTS.md, laptop sessions never close out 3D work as green).
    - **Reminder:** swap to the PC now.

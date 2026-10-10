@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { canModify } from "@/lib/ownership";
 import { flashcardToCardContent, locusLabelFrom, planLocusAnchors } from "@/lib/deckLink";
 import { locusPercent, wallPoint } from "@/lib/geometry";
+import { serverError } from "@/lib/apiError";
 
 const MAX_IMPORT = 200;
 
@@ -44,7 +45,7 @@ export async function POST(req: NextRequest) {
     .order("id", { ascending: true });
   if (Array.isArray(flashcard_ids) && flashcard_ids.length > 0) fq = fq.in("id", flashcard_ids);
   const { data: all, error: fError } = await fq;
-  if (fError) return NextResponse.json({ error: fError.message }, { status: 500 });
+  if (fError) return serverError("api/imports POST", fError);
   if (!all || all.length === 0) return NextResponse.json({ error: "Nothing to import" }, { status: 400 });
 
   const fresh = all.filter((f: { source_card_id: string | null }) => !f.source_card_id);
@@ -92,7 +93,9 @@ export async function POST(req: NextRequest) {
       const base = typeof lastLocus?.position === "number" ? lastLocus.position + 1 : 0;
       const { count: existing } = await supabase.from("loci").select("id", { count: "exact", head: true }).eq("room_id", room_id);
       const size = { width: room.width, depth: room.depth };
-      const anchors = planLocusAnchors(fresh.length, existing ?? 0);
+      const { data: openings, error: openingsError } = await supabase.from("openings").select("*").eq("room_id", room_id);
+      if (openingsError) throw openingsError;
+      const anchors = planLocusAnchors(fresh.length, existing ?? 0, size, openings ?? []);
       const rows = fresh.map((f: { question: string }, i: number) => {
         const { wall, wall_offset } = anchors[i];
         const percent = locusPercent({ wall, wall_offset, x: 0, y: 0 }, size);
@@ -164,9 +167,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ loci, cards, skipped, room_id }, { status: 201 });
   } catch (err) {
     const status = err instanceof Error && "status" in err ? (err as { status: number }).status : 500;
+    if (status === 500) console.error("api/imports POST", err);
     // Clear any half-links before removing the cards (SET NULL would anyway).
     await supabase.from("flashcards").update({ source_card_id: null }).in("id", fresh.map((f: { id: string }) => f.id));
     await rollback();
-    return NextResponse.json({ error: err instanceof Error ? err.message : "Import failed" }, { status: status });
+    return NextResponse.json(
+      { error: status !== 500 && err instanceof Error ? err.message : "Import failed" },
+      { status }
+    );
   }
 }

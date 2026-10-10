@@ -17,7 +17,67 @@ the PC pass (real GPU + live clicking) knows exactly where to look.
 - Screenshots (software WebGL) of light + dark: landing, home, decks, deck
   detail, room editor, walk view, print, results, onboarding overlay.
 
-## NOT verified — needs the PC (real GPU + live clicking)
+## PC verification pass (2026-10-09)
+
+Rerun any time with `npm run build && npm run livecheck` (`scripts/livecheck.cjs`,
+29 checks; it starts `next start`, seeds + deletes a throwaway user in the
+hosted Supabase, writes screenshots + the print PDF to `.livecheck/`).
+
+Green: `tsc` + `lint` + 151 tests + `next build`, and 29/29 live checks on
+both GPUs of the PC: RTX 5050 (`npm run livecheck`) and the AMD Radeon
+integrated GPU (`-- --gpu=igpu`). Walk holds a steady 60 fps on both at
+1440x900 and at phone size (390x844 @2x render): p95 16.7 ms, 0% of frames
+over 25 ms (headless caps at 60; SwiftShader gets 28 fps, so the metric bites).
+
+Covered by clicking: wall placement (hover readout, Undo, Ctrl+Z), doorway
+refusal, `P`/`V`/`Esc`, marker drag (height kept) + Shift-drag + a second drag
+of the same marker, Spread evenly, header Import deck, editor minimap room
+tap, Palace 3D tab (floor click selects, `+ Add loci` -> place mode), walk
+minimap wedge/locus glide/door tap, door prompt walk-through, tour Due-first/
+Walkthrough + MCQ + Full summary, palace tour stepper, phone layout (card vs
+joystick vs minimap, HUD above labels, joystick held through a card opening),
+night sky (stars overhead, at the horizon, in the palace overview), print
+(chrome hidden in print media, A4 PDF rendered), 404 shell, onboarding
+overlay, profile rename/email/password + re-login, per-locus Import from deck /
+Send to deck / Push / Unlink, API hardening (bogus ids, non-string Q/A).
+
+Bugs found and fixed:
+
+1. Marker drag worked once per page load: `raycast={… : undefined}` never
+   restored picking (R3F ignores `undefined` props). Now restores
+   `THREE.Mesh.prototype.raycast` (`RoomShell.tsx`).
+2. Deck import could drop a locus inside a doorway. `planLocusAnchors` now
+   plans along each wall's solid length, keeps 0.5 m from door jambs, and
+   skips walls that are all opening (`solidOffset` in `lib/walk.ts`, shared
+   with `distributeOnWall`).
+3. Minimap: a locus beside a door swallowed the door tap. Taps now resolve to
+   the nearest target (`pickMapTarget` in `lib/blueprint.ts`).
+4. Phone walk: the joystick covered the tour card (MCQ choice 1) and the
+   locus card; the minimap stayed hidden after "Keep walking". One `cardOpen`
+   flag drives both; the joystick hides on release, so a card opening
+   mid-push doesn't yank it from under the thumb.
+5. 3D `<Html>` labels painted over HUD buttons and editor forms. `SceneGate`
+   wraps every canvas in an `isolate` layer.
+6. Palace 3D overview: floors weren't pickable, so selecting a room meant
+   hitting a thin far wall. Floors pick there now; orbit-drag releases don't.
+7. Editor "Moved … · Undo" snackbar blocked grabbing the marker behind it;
+   only the Undo button takes clicks now.
+8. Night sky was near-empty overhead in walk mode and invisible in the
+   editor/palace domes: drei `<Stars>` sized points by distance in raw
+   framebuffer pixels. Replaced with a seeded field (`lib/sky.ts`) drawn at a
+   fixed CSS-pixel size x DPR (`SceneSky.tsx`). Zenith band: 4 -> 32 stars.
+9. Blueprint/minimap: loci on a wall two rooms share sat on the line, so it
+   was unclear whose they were. Plan loci are inset 0.45 m into their room
+   (`LOCUS_INSET_M`).
+10. Review minors: PG messages no longer leak in 500s (`lib/apiError.ts`,
+    logged server-side); lookups use `maybeSingle()` + error check, so DB
+    errors are 500 not 404 and malformed uuids (22P02) are 404 not 500;
+    flashcard Q/A must be strings; `MAX_STEP` is `ONBOARDING_STEPS.length` (4).
+
+Still unverified: a real phone (touch is emulated via CDP) and the browser's
+own Print dialog (the PDF comes from the same print-media rendering).
+
+## NOT verified — needs the PC (real GPU + live clicking) — superseded by the pass above
 
 - Walk tour interactions end to end: MCQ grading, the new `1 = Missed / 2 = Got it`
   key order, door walk-through, the door-prompt hysteresis (2.0 m in / 2.6 m out),
@@ -55,9 +115,8 @@ targeted suite: bogus export ids → 404, bad session scores → 400):
    `canModify` (admin bypass consistent with every other route).
 6. Drive-by: `app/api/cards/[id]/route.ts` dead `front` variable removed.
 
-Remaining minor items from that review (not blockers, still open): `.single()`
-masking 500s as 404s in flashcards/cards reads, `String()` coercion of
-non-string Q/A, PG error-message leakage in 500s, `MAX_STEP=5` vs 4 steps.
+Remaining minor items from that review: all four fixed in the PC
+verification pass below.
 
 - **New migration** `20261007000003_deck_sessions_onboarding_step.sql`:
   `study_sessions.deck_id` (FK, SET NULL, indexed) and `users.onboarding_step`.

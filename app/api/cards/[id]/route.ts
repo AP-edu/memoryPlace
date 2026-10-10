@@ -4,26 +4,20 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { supabase } from "@/lib/supabase";
 import { canModify } from "@/lib/ownership";
 import { validateOptionsInput } from "@/lib/quiz";
+import { cardRoomOwner } from "@/lib/links";
+import { lookupFailed, serverError } from "@/lib/apiError";
 
 type RouteContext = { params: Promise<{ id: string }> };
-
-async function cardOwner(cardId: string): Promise<string | null> {
-  const { data: card } = await supabase.from("cards").select("locus_id").eq("id", cardId).single();
-  if (!card) return null;
-  const { data: locus } = await supabase.from("loci").select("room_id").eq("id", card.locus_id).single();
-  if (!locus) return null;
-  const { data: room } = await supabase.from("rooms").select("user_id").eq("id", locus.room_id).single();
-  return room?.user_id ?? null;
-}
 
 export async function GET(req: NextRequest, { params }: RouteContext) {
   const { id } = await params;
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { data: card, error } = await supabase.from("cards").select("*").eq("id", id).single();
-  if (error || !card) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  const owner = await cardOwner(id);
+  const { data: card, error } = await supabase.from("cards").select("*").eq("id", id).maybeSingle();
+  if (error) return lookupFailed("api/cards/[id] GET", error);
+  if (!card) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  const owner = await cardRoomOwner(id);
   if (!owner || !canModify(session, owner)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   return NextResponse.json(card);
@@ -34,9 +28,10 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { data: card } = await supabase.from("cards").select("*").eq("id", id).single();
+  const { data: card, error: lookupError } = await supabase.from("cards").select("*").eq("id", id).maybeSingle();
+  if (lookupError) return lookupFailed("api/cards/[id] PUT", lookupError);
   if (!card) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  const owner = await cardOwner(id);
+  const owner = await cardRoomOwner(id);
   if (!owner || !canModify(session, owner)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { front, back, type, options, position, locus_id } = await req.json();
@@ -89,7 +84,7 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
   }
 
   const { data, error } = await supabase.from("cards").update(updates).eq("id", id).select().single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return serverError("api/cards/[id] PUT", error);
 
   return NextResponse.json(data);
 }
@@ -99,13 +94,14 @@ export async function DELETE(req: NextRequest, { params }: RouteContext) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { data: card } = await supabase.from("cards").select("*").eq("id", id).single();
+  const { data: card, error: lookupError } = await supabase.from("cards").select("*").eq("id", id).maybeSingle();
+  if (lookupError) return lookupFailed("api/cards/[id] DELETE", lookupError);
   if (!card) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  const owner = await cardOwner(id);
+  const owner = await cardRoomOwner(id);
   if (!owner || !canModify(session, owner)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { error } = await supabase.from("cards").delete().eq("id", id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return serverError("api/cards/[id] DELETE", error);
 
   return NextResponse.json({ message: "Deleted" });
 }

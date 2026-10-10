@@ -4,6 +4,7 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { supabase } from "@/lib/supabase";
 import { canModify } from "@/lib/ownership";
 import { parseAnswers } from "@/lib/sessionSummary";
+import { serverError } from "@/lib/apiError";
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -19,7 +20,7 @@ export async function GET(req: NextRequest) {
   if (deckId) query = query.eq("deck_id", deckId);
 
   const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return serverError("api/study-sessions GET", error);
 
   return NextResponse.json(data);
 }
@@ -91,6 +92,6 @@ export async function POST(req: NextRequest) {
     .select()
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return serverError("api/study-sessions POST", error);
   return NextResponse.json(data, { status: 201 });
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Locus, Opening, Room } from "@/types/database";
 import type { Level } from "@/types/database";
-import { layoutBlueprint, levelPlanFor, playerToPlan, tappableDoors, viewWedge, type BlueprintOpening } from "./blueprint";
+import { layoutBlueprint, levelPlanFor, pickMapTarget, playerToPlan, tappableDoors, viewWedge, type BlueprintOpening } from "./blueprint";
 
 const room = (over: Partial<Room> & { id: string }): Room =>
   ({
@@ -33,6 +33,21 @@ describe("layoutBlueprint", () => {
     const south = layoutBlueprint([room({ id: "a" })], [locus({ id: "l2", room_id: "a", wall: "south" })], [], new Map())!.loci[0];
     expect(north.y).toBeLessThan(south.y);
     expect(north.x).toBeCloseTo(1 + 5); // pad + half of width
+  });
+
+  it("insets loci into their own room, so a shared wall stays unambiguous", () => {
+    // a's north wall is b's south wall (b sits directly north of a).
+    const rooms = [room({ id: "a" }), room({ id: "b", pos_z: 8 })];
+    const bp = layoutBlueprint(rooms, [locus({ id: "la", room_id: "a", wall: "north" }), locus({ id: "lb", room_id: "b", wall: "south" })], [], new Map())!;
+    const inside = (roomId: string, p: { x: number; y: number }) => {
+      const r = bp.rooms.find((x) => x.id === roomId)!;
+      return p.x > r.x && p.x < r.x + r.w && p.y > r.y && p.y < r.y + r.h;
+    };
+    const la = bp.loci.find((l) => l.roomId === "a")!;
+    const lb = bp.loci.find((l) => l.roomId === "b")!;
+    expect(inside("a", la)).toBe(true);
+    expect(inside("b", lb)).toBe(true);
+    expect(lb.y).toBeLessThan(la.y); // b is north, drawn above
   });
 
   it("offsets rooms by their level position and numbers loci in tour order", () => {
@@ -115,5 +130,34 @@ describe("tappableDoors", () => {
   it("paints the current room's doors last so they win overlaps", () => {
     const out = tappableDoors([d("hall", "lib"), d("lib", "study")], "hall");
     expect(out.map((o) => o.roomId)).toEqual(["lib", "hall"]);
+  });
+});
+
+describe("pickMapTarget", () => {
+  // Hall's north door spans x 4..6 at y 0 and leads to "lib"; a hall locus hangs just beside it.
+  const plan = {
+    loci: [
+      { roomId: "hall", n: 1, x: 6.6, y: 0 },
+      { roomId: "lib", n: 1, x: 2, y: -4 },
+    ],
+    openings: [
+      { roomId: "hall", targetRoomId: "lib", kind: "door" as const, x1: 4, y1: 0, x2: 6, y2: 0 },
+      { roomId: "lib", targetRoomId: "hall", kind: "door" as const, x1: 4, y1: 0, x2: 6, y2: 0 },
+    ],
+  };
+  const all = { loci: true, rooms: true };
+  it("a tap on the door opens the next room even with a locus beside it", () => {
+    expect(pickMapTarget(plan, "hall", { x: 5.4, y: 0.2 }, 1.3, all)).toEqual({ kind: "room", roomId: "lib" });
+  });
+  it("a tap on the locus beside the door still selects the locus", () => {
+    expect(pickMapTarget(plan, "hall", { x: 6.55, y: 0.1 }, 1.3, all)).toEqual({ kind: "locus", n: 1 });
+  });
+  it("loci in other rooms open that room; nothing within reach is null", () => {
+    expect(pickMapTarget(plan, "hall", { x: 2.2, y: -3.8 }, 1.3, all)).toEqual({ kind: "room", roomId: "lib" });
+    expect(pickMapTarget(plan, "hall", { x: 20, y: 20 }, 1.3, all)).toBeNull();
+  });
+  it("respects which handlers exist", () => {
+    expect(pickMapTarget(plan, "hall", { x: 6.55, y: 0.1 }, 1.3, { loci: false, rooms: true })).toEqual({ kind: "room", roomId: "lib" });
+    expect(pickMapTarget(plan, "hall", { x: 5.6, y: 0 }, 1.3, { loci: true, rooms: false })).toEqual({ kind: "locus", n: 1 });
   });
 });

@@ -12,6 +12,7 @@
 
 # testing
 /coverage
+/.livecheck/
 
 # next.js
 /.next/

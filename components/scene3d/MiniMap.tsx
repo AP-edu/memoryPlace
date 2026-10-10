@@ -1,6 +1,6 @@
 "use client";
-import { useState } from "react";
-import { playerToPlan, tappableDoors, viewWedge, type Blueprint } from "@/lib/blueprint";
+import { useRef, useState } from "react";
+import { pickMapTarget, playerToPlan, tappableDoors, viewWedge, type Blueprint } from "@/lib/blueprint";
 
 export interface MiniMapPose {
   /** Room-local metres (x east, z north) in the CURRENT room. */
@@ -39,6 +39,7 @@ export default function MiniMap({
   className?: string;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const svgRef = useRef<SVGSVGElement>(null);
   const current = plan.rooms.find((r) => r.id === currentRoomId);
   const me = current && pose ? playerToPlan(current, pose) : null;
   const wedge = me && pose ? viewWedge(me.x, me.y, pose.yaw) : null;
@@ -47,6 +48,18 @@ export default function MiniMap({
   const px = expanded ? 260 : 150;
   const hit = Math.max(1, (Math.max(plan.width, plan.height) / px) * 20);
   const stroke = Math.max(0.12, plan.width / 260);
+
+  // Tap circles overlap (a locus hung beside a door), so whichever circle gets
+  // the click, act on the target nearest the tap point.
+  const tap = (e: React.MouseEvent, fallback: () => void) => {
+    const ctm = svgRef.current?.getScreenCTM();
+    if (!ctm) return fallback();
+    const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(ctm.inverse());
+    const t = pickMapTarget(plan, currentRoomId, pt, hit, { loci: !!onGoLocus, rooms: !!onGoRoom });
+    if (!t) return fallback();
+    if (t.kind === "locus") onGoLocus?.(t.n);
+    else onGoRoom?.(t.roomId);
+  };
 
   return (
     <div
@@ -68,6 +81,7 @@ export default function MiniMap({
         </button>
       </div>
       <svg
+        ref={svgRef}
         viewBox={`0 0 ${plan.width} ${plan.height}`}
         style={{ width: px, maxWidth: "70vw", height: "auto" }}
         role="group"
@@ -125,7 +139,7 @@ export default function MiniMap({
               r={hit}
               fill="transparent"
               style={{ cursor: "pointer" }}
-              onClick={() => onGoRoom(o.targetRoomId as string)}
+              onClick={(e) => tap(e, () => onGoRoom(o.targetRoomId as string))}
             >
               <title>{`Go to ${roomTitles[o.targetRoomId as string] ?? "next room"}`}</title>
             </circle>
@@ -146,7 +160,7 @@ export default function MiniMap({
                 </text>
               )}
               {go && (
-                <circle cx={l.x} cy={l.y} r={hit} fill="transparent" style={{ cursor: "pointer" }} onClick={go}>
+                <circle cx={l.x} cy={l.y} r={hit} fill="transparent" style={{ cursor: "pointer" }} onClick={(e) => tap(e, go)}>
                   <title>{inCurrent ? `Go to locus ${l.n}` : "Open this room"}</title>
                 </circle>
               )}
