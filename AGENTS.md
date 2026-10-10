@@ -71,10 +71,14 @@ npm run dev        # dev server
 npm run build      # production build
 npm run lint       # eslint
 npm run test       # vitest run (no typecheck script — use npx tsc --noEmit)
+npm run livecheck  # PC: real-GPU click-through of the build (scripts/livecheck.cjs)
 ```
 
 A phase is green on `npx tsc --noEmit` + `npm run lint` + `npm run build` +
-a live check (see Roadmap). `/check` runs the fast three.
+a live check (see Roadmap). `/check` runs the fast three; the live check is
+`npm run build && npm run livecheck` (starts `next start` itself, seeds and
+then deletes a throwaway `mp-livecheck-*` user in the `.env.local` Supabase,
+artifacts in `.livecheck/`). Add checks there when a phase adds UI.
 
 ## Tech Stack
 
@@ -95,9 +99,11 @@ Two machines share this repo. Respect what each can do well.
   modules + vitest. Fast checks only: `npx tsc --noEmit` + `npm run lint` +
   `npm run test` (see `/check`).
 - **PC (strong machine):** anything that adds geometry, markers, or `<Html>`
-  labels to a scene; `npm run build`; FPS + live-click verification of 3D
-  (Playwright software WebGL on weak GPUs is slow and flaky); R3F dev-server
-  iteration.
+  labels to a scene; `npm run build`; FPS + live-click verification of 3D via
+  `npm run livecheck` (discrete GPU) and `npm run livecheck -- --gpu=igpu`
+  (the AMD integrated GPU, for the low-end FPS verdict); R3F dev-server
+  iteration. `--gpu=software` runs on the laptop as a smoke test only:
+  SwiftShader is slow and never a 3D verdict.
 - Never run `npm audit fix --force` — it changes major versions and has broken
   the build before (eslint-config-next 16→14 broke flat-config lint; vitest
   3→5 gave unresolvable peers). Fix vulnerabilities with deliberate upgrades.

@@ -1,7 +1,7 @@
 // Top-down blueprint layout for the printable export (pure, no React).
 // Convention (AGENTS.md): x -> right, north (+z) at the TOP, so svgY = maxZ - z.
 import { locusWorldPos, openingWidthM, wallLength, wallPoint } from "@/lib/geometry";
-import { tourOrder } from "@/lib/scene3d";
+import { inwardNormal, tourOrder } from "@/lib/scene3d";
 import type { Level, Locus, Opening, Room } from "@/types/database";
 
 export interface BlueprintRoom {
@@ -43,6 +43,12 @@ export interface Blueprint {
 }
 
 const PAD = 1;
+/**
+ * Loci sit this far inside their wall on the plan (the 3D markers float off the
+ * wall too), so a locus on a wall two rooms share reads as its own room's.
+ * About one print-marker radius.
+ */
+export const LOCUS_INSET_M = 0.45;
 
 /**
  * Lay out the given rooms (already filtered to one level) in SVG metres.
@@ -76,9 +82,11 @@ export function layoutBlueprint(
   const outLoci: BlueprintLocus[] = [];
   for (const room of rooms) {
     const ordered = tourOrder(loci.filter((l) => l.room_id === room.id));
+    const inset = Math.min(LOCUS_INSET_M, Math.min(room.width, room.depth) / 4);
     ordered.forEach((l, i) => {
       const p = locusWorldPos(l, room);
-      outLoci.push({ roomId: room.id, n: i + 1, x: sx(room.pos_x + p.x), y: sy(room.pos_z + p.z) });
+      const n = inwardNormal(p.wall);
+      outLoci.push({ roomId: room.id, n: i + 1, x: sx(room.pos_x + p.x + n.x * inset), y: sy(room.pos_z + p.z + n.z * inset) });
     });
   }
 

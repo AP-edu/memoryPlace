@@ -267,7 +267,12 @@ function NavChevrons({
   );
 }
 
-function Joystick({ joyRef }: { joyRef: React.MutableRefObject<MoveInput> }) {
+/**
+ * Touch joystick (coarse pointers only). `hidden` (a bottom card is open) takes
+ * effect on release, so a card that opens mid-push never yanks the stick from
+ * under the thumb.
+ */
+function Joystick({ joyRef, hidden = false }: { joyRef: React.MutableRefObject<MoveInput>; hidden?: boolean }) {
   const [knob, setKnob] = useState<{ x: number; y: number } | null>(null);
   const origin = useRef<{ x: number; y: number; id: number } | null>(null);
   const R = 48;
@@ -289,13 +294,14 @@ function Joystick({ joyRef }: { joyRef: React.MutableRefObject<MoveInput> }) {
     setKnob(null);
     joyRef.current = { throttle: 0, strafe: 0 };
   }
-  // Hidden mid-drag (a card opened): stop walking rather than keep the last push.
+  // Never leave a push behind when the stick unmounts (route change mid-drag).
   useEffect(
     () => () => {
       joyRef.current = { throttle: 0, strafe: 0 };
     },
     [joyRef]
   );
+  if (hidden && !knob) return null;
   return (
     <div
       aria-label="Move joystick"
@@ -974,7 +980,7 @@ export default function WalkView({
         </div>
       )}
 
-      {!cardOpen && <Joystick joyRef={joyRef} />}
+      <Joystick joyRef={joyRef} hidden={cardOpen} />
     </div>
   );
 }

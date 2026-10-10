@@ -33,9 +33,10 @@ All green on the laptop: `npx tsc --noEmit` + `npm run lint` + `npm run test`
 
 ## PC checklist (in order)
 
-Steps 1–3 DONE on the PC (2026-10-09, RTX 5050): build green, 29/29 live
-checks green after fixes — see SONNET-NOTES.md "PC verification pass".
-Next up: step 5 (Vercel). Step 4's migrations were already applied (11/11).
+Steps 1–3 DONE on the PC (2026-10-09): build green, `npm run livecheck`
+29/29 on the RTX 5050 and on the integrated GPU — see SONNET-NOTES.md
+"PC verification pass". Next up: step 5 (Vercel). Step 4's migrations were
+already applied (11/11).
 
 1. **Merge + pull**, `npm install` if needed. Note: `.next/` cache was
    deleted on the laptop (stale validator refs to deleted routes) — first

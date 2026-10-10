@@ -35,6 +35,21 @@ describe("layoutBlueprint", () => {
     expect(north.x).toBeCloseTo(1 + 5); // pad + half of width
   });
 
+  it("insets loci into their own room, so a shared wall stays unambiguous", () => {
+    // a's north wall is b's south wall (b sits directly north of a).
+    const rooms = [room({ id: "a" }), room({ id: "b", pos_z: 8 })];
+    const bp = layoutBlueprint(rooms, [locus({ id: "la", room_id: "a", wall: "north" }), locus({ id: "lb", room_id: "b", wall: "south" })], [], new Map())!;
+    const inside = (roomId: string, p: { x: number; y: number }) => {
+      const r = bp.rooms.find((x) => x.id === roomId)!;
+      return p.x > r.x && p.x < r.x + r.w && p.y > r.y && p.y < r.y + r.h;
+    };
+    const la = bp.loci.find((l) => l.roomId === "a")!;
+    const lb = bp.loci.find((l) => l.roomId === "b")!;
+    expect(inside("a", la)).toBe(true);
+    expect(inside("b", lb)).toBe(true);
+    expect(lb.y).toBeLessThan(la.y); // b is north, drawn above
+  });
+
   it("offsets rooms by their level position and numbers loci in tour order", () => {
     const bp = layoutBlueprint(
       [room({ id: "a" }), room({ id: "b", pos_x: 12 })],
