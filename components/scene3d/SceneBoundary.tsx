@@ -1,7 +1,7 @@
 "use client";
-import { Component, useMemo, type ReactNode } from "react";
+import { Component, useSyncExternalStore, type ReactNode } from "react";
 import Link from "next/link";
-import { supportsWebGL } from "@/lib/webgl";
+import { supportsWebGL, webglForceOff } from "@/lib/webgl";
 
 /**
  * Safety net for every R3F Canvas site: probe WebGL first (the common
@@ -9,10 +9,27 @@ import { supportsWebGL } from "@/lib/webgl";
  * throwing), and catch anything that still blows up at runtime.
  */
 
-export function useWebGLStatus(): { ok: boolean; detail: string } {
-  return useMemo(
-    () => supportsWebGL(typeof document !== "undefined" ? document : null, typeof window !== "undefined" ? window.location.search : ""),
-    []
+// One real probe per page load (it creates a context: walking rewrites the
+// URL on every room change, so never re-probe per query string); ?webgl=off
+// forces the fallback for tests.
+let probed: { ok: boolean; detail: string } | null = null;
+const FORCED_OFF = { ok: false, detail: "forced-off" };
+const noSubscribe = () => () => {};
+function probe(): { ok: boolean; detail: string } {
+  if (webglForceOff(window.location.search)) return FORCED_OFF;
+  return (probed ??= supportsWebGL(document, ""));
+}
+
+/**
+ * WebGL support, probed once per page load in the browser. Null on the server
+ * and during hydration (a pre-rendered page must not render the fallback the
+ * server would pick for itself).
+ */
+export function useWebGLStatus(): { ok: boolean; detail: string } | null {
+  return useSyncExternalStore(
+    noSubscribe,
+    probe,
+    () => null
   );
 }
 
@@ -90,6 +107,7 @@ export function SceneGate({
   backLabel,
 }: BoundaryProps): ReactNode {
   const status = useWebGLStatus();
+  if (!status) return <div className="h-full w-full" />;
   if (!status.ok) {
     return <SceneFallback title={title} backHref={backHref} backLabel={backLabel} />;
   }

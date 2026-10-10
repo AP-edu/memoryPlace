@@ -29,6 +29,8 @@ import {
 } from "@/lib/grid";
 import type { EditorBackend, LevelPatch, OpeningPatch, RoomPatch } from "./backend";
 import { HALLWAY_METADATA, HALLWAY_WIDTH_M, isHallway, planHallway, sharedStretch } from "@/lib/hallway";
+import { calibrateUnderlay, moveUnderlay, underlayRect, type UnderlayPlacement } from "@/lib/underlay";
+import { useUnderlay } from "@/hooks/useUnderlay";
 
 // Lightweight 2D grid editor (SVG). Level coordinates are metres; the SVG
 // viewBox is in metres too with svg-y = -z, so north (+z) is at the TOP.
@@ -49,7 +51,8 @@ type Drag =
   | { kind: "pan"; sx: number; sy: number; cx: number; cz: number }
   | { kind: "draw"; a: Pt; b: Pt }
   | { kind: "move"; id: string; start: Pt; orig: Rect; rect: Rect; guides: SnapGuides }
-  | { kind: "resize"; id: string; handle: Handle; orig: Rect; rect: Rect; guides: SnapGuides };
+  | { kind: "resize"; id: string; handle: Handle; orig: Rect; rect: Rect; guides: SnapGuides }
+  | { kind: "underlay"; start: Pt; orig: UnderlayPlacement };
 interface View {
   cx: number;
   cz: number;
@@ -215,6 +218,17 @@ export function GridEditor({
   const levelOf = useCallback((r: Room) => r.level_id ?? firstLevelId, [firstLevelId]);
   const activeLevel = levels.find((l) => l.id === activeLevelId) ?? levels[0] ?? null;
   const minSize = 1;
+
+  // Tracing: a photo of a real floor plan under the grid (per level, kept in
+  // this browser). Move it, calibrate its scale on two known points, draw over it.
+  const underlay = useUnderlay(palace.id, activeLevel?.id);
+  const [trace, setTrace] = useState<null | "move" | "scale">(null);
+  const [scalePts, setScalePts] = useState<Pt[]>([]);
+  const [scaleMetres, setScaleMetres] = useState("");
+  const [livePlace, setLivePlace] = useState<UnderlayPlacement | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const place = livePlace ?? underlay.place;
+  const tracing = !!(underlay.url && place?.visible);
 
   // ------------------------------------------------------------ effects
   useEffect(() => {
@@ -839,6 +853,14 @@ export function GridEditor({
     }
     if (e.button !== 0) return;
     if (!activeLevel) return;
+    if (trace === "move" && underlay.place) {
+      setDrag({ kind: "underlay", start: p, orig: underlay.place });
+      return;
+    }
+    if (trace === "scale" && underlay.place) {
+      setScalePts((pts) => (pts.length >= 2 ? [p] : [...pts, p]));
+      return;
+    }
     if (tool === "room") {
       setSelection(null);
       setDrag({ kind: "draw", a: p, b: p });
@@ -905,6 +927,9 @@ export function GridEditor({
         setDrag({ ...drag, rect: r.rect, guides: r.guides });
         break;
       }
+      case "underlay":
+        setLivePlace(moveUnderlay(drag.orig, p.x - drag.start.x, p.z - drag.start.z));
+        break;
     }
   }
 
@@ -924,7 +949,21 @@ export function GridEditor({
     } else if (d.kind === "move" || d.kind === "resize") {
       const same = d.rect.x === d.orig.x && d.rect.z === d.orig.z && d.rect.w === d.orig.w && d.rect.d === d.orig.d;
       if (!same) commitRoomRect(d.id, d.rect);
+    } else if (d.kind === "underlay") {
+      if (livePlace) underlay.update(livePlace);
+      setLivePlace(null);
     }
+  }
+
+  function applyScale(e: React.FormEvent) {
+    e.preventDefault();
+    const m = Number(scaleMetres);
+    if (!underlay.place || scalePts.length < 2 || !(m > 0)) return;
+    underlay.update(calibrateUnderlay(underlay.place, scalePts[0], scalePts[1], m));
+    setScalePts([]);
+    setScaleMetres("");
+    setTrace(null);
+    setNotice(`Scale set: those points are now ${m} m apart. Draw rooms over the plan.`);
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
@@ -935,7 +974,10 @@ export function GridEditor({
     if (key === "Escape") {
       e.preventDefault();
       if (drag) setDrag(null);
-      else if (chooser) setChooser(null);
+      else if (trace) {
+        setTrace(null);
+        setScalePts([]);
+      } else if (chooser) setChooser(null);
       else if (connectFirst) setConnectFirst(null);
       else {
         setTool("select");
@@ -1063,8 +1105,12 @@ export function GridEditor({
   }
 
   const cursorStyle =
-    drag?.kind === "pan"
+    drag?.kind === "pan" || drag?.kind === "underlay"
       ? "grabbing"
+      : trace === "move"
+        ? "grab"
+        : trace === "scale"
+          ? "crosshair"
       : drag?.kind === "resize"
         ? HANDLE_CURSOR[drag.handle]
         : tool === "room"
@@ -1136,10 +1182,123 @@ export function GridEditor({
               ))}
             </select>
           </label>
+          {!underlay.url && (
+            <button
+              onClick={() => fileRef.current?.click()}
+              className="btn-ghost !px-2"
+              title="Put a photo or scan of a real floor plan under the grid and draw your rooms over it"
+            >
+              Trace a plan
+            </button>
+          )}
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            aria-label="Floor plan image to trace"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = "";
+              if (!file) return;
+              void underlay.load(file, { cx: view.cx, cz: view.cz, widthM: vw, heightM: vh }).then(() => {
+                setTrace("scale");
+                setScalePts([]);
+              });
+            }}
+          />
           <span className="ml-auto text-xs text-muted-foreground" aria-live="polite">
             {pending > 0 ? "Saving…" : error ? "" : "All changes saved"}
           </span>
         </div>
+        {underlay.error && <p className="mb-2 text-xs text-destructive">{underlay.error}</p>}
+        {underlay.url && place && (
+          <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-primary/50 bg-primary/5 px-2 py-1.5 text-xs" role="group" aria-label="Tracing">
+            <span className="font-semibold">Tracing</span>
+            <button
+              type="button"
+              aria-pressed={trace === "scale"}
+              onClick={() => {
+                setTrace((t) => (t === "scale" ? null : "scale"));
+                setScalePts([]);
+              }}
+              className={`rounded-md px-2 py-1 font-medium ${trace === "scale" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+            >
+              Set scale
+            </button>
+            <button
+              type="button"
+              aria-pressed={trace === "move"}
+              onClick={() => {
+                setTrace((t) => (t === "move" ? null : "move"));
+                setScalePts([]);
+              }}
+              className={`rounded-md px-2 py-1 font-medium ${trace === "move" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+            >
+              Move image
+            </button>
+            {trace === "scale" &&
+              (scalePts.length < 2 ? (
+                <span className="text-muted-foreground">
+                  Click two points on the plan a known distance apart (a wall, a door). {scalePts.length}/2
+                </span>
+              ) : (
+                <form onSubmit={applyScale} className="flex items-center gap-1">
+                  <label className="flex items-center gap-1">
+                    They are
+                    <input
+                      autoFocus
+                      type="number"
+                      min={0.1}
+                      step={0.1}
+                      value={scaleMetres}
+                      onChange={(e) => setScaleMetres(e.target.value)}
+                      className="input-base !w-20 !py-0.5 text-xs"
+                      aria-label="Real distance between the two points in metres"
+                    />
+                    m apart
+                  </label>
+                  <button type="submit" className="btn-primary !px-2 !py-0.5 text-xs" disabled={!(Number(scaleMetres) > 0)}>
+                    Apply
+                  </button>
+                </form>
+              ))}
+            <label className="ml-auto flex items-center gap-1 text-muted-foreground">
+              Opacity
+              <input
+                type="range"
+                min={0.1}
+                max={1}
+                step={0.05}
+                value={place.opacity}
+                onChange={(e) => setLivePlace({ ...place, opacity: Number(e.target.value) })}
+                onPointerUp={() => livePlace && (underlay.update(livePlace), setLivePlace(null))}
+                onKeyUp={() => livePlace && (underlay.update(livePlace), setLivePlace(null))}
+                className="w-20 accent-[var(--color-primary)]"
+                aria-label="Plan image opacity"
+              />
+            </label>
+            <button type="button" onClick={() => underlay.update({ ...place, visible: !place.visible })} className="rounded-md px-2 py-1 hover:bg-muted">
+              {place.visible ? "Hide" : "Show"}
+            </button>
+            <button type="button" onClick={() => fileRef.current?.click()} className="rounded-md px-2 py-1 hover:bg-muted">
+              Replace
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (!confirm("Remove the plan image? Your rooms stay.")) return;
+                underlay.remove();
+                setTrace(null);
+                setScalePts([]);
+              }}
+              className="rounded-md px-2 py-1 text-destructive hover:bg-destructive/10"
+            >
+              Remove
+            </button>
+            <span className="w-full text-[11px] text-muted-foreground sm:w-auto">The image stays in this browser; it isn&apos;t uploaded.</span>
+          </div>
+        )}
 
         <div className="mb-2 flex flex-wrap items-center gap-1" role="tablist" aria-label="Levels">
           {[...levels].reverse().map((l) => (
@@ -1204,6 +1363,20 @@ export function GridEditor({
             className="block touch-none select-none"
             style={{ cursor: cursorStyle }}
           >
+            {/* the plan being traced, under the grid */}
+            {underlay.url && place?.visible && (
+              <image
+                href={underlay.url}
+                x={underlayRect(place).x}
+                y={-underlayRect(place).z}
+                width={underlayRect(place).w}
+                height={underlayRect(place).d}
+                opacity={place.opacity}
+                preserveAspectRatio="none"
+                pointerEvents="none"
+                data-testid="plan-underlay"
+              />
+            )}
             {/* grid */}
             <g>
               {xLines.map((x) => (
@@ -1241,7 +1414,8 @@ export function GridEditor({
                     width={rect.w}
                     height={rect.d}
                     fill={hall ? "url(#mp-hallway-stripes)" : "var(--card)"}
-                    fillOpacity={0.95}
+                    // See-through while tracing, so the plan shows under the rooms.
+                    fillOpacity={tracing ? 0.4 : 0.95}
                     stroke={invalid ? "var(--destructive)" : sel || picked ? "var(--primary)" : "var(--muted-foreground)"}
                     strokeWidth={sel || picked ? 3 : hall ? 1.5 : 2}
                     strokeDasharray={hall && !sel ? "6 3" : undefined}
@@ -1334,6 +1508,17 @@ export function GridEditor({
                 <text x={dimsRect.x} y={-dimsRect.z + px(16)} fontSize={px(10)} fill="var(--muted-foreground)">
                   ({fmtM(dimsRect.x)}, {fmtM(dimsRect.z)}){dimsInvalid ? " — overlaps" : ""}
                 </text>
+              </g>
+            )}
+            {/* scale calibration points */}
+            {trace === "scale" && scalePts.length > 0 && (
+              <g pointerEvents="none">
+                {scalePts.length === 2 && (
+                  <line x1={scalePts[0].x} y1={-scalePts[0].z} x2={scalePts[1].x} y2={-scalePts[1].z} stroke="var(--accent)" strokeWidth={3} strokeDasharray="6 4" vectorEffect="non-scaling-stroke" />
+                )}
+                {scalePts.map((pt, i) => (
+                  <circle key={i} cx={pt.x} cy={-pt.z} r={px(6)} fill="var(--accent)" stroke="var(--background)" strokeWidth={2} vectorEffect="non-scaling-stroke" />
+                ))}
               </g>
             )}
           </svg>

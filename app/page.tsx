@@ -4,6 +4,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import DemoBlueprint from "@/components/DemoBlueprint";
+import PlanThumb from "@/components/palaces/PlanThumb";
+import { TEMPLATES, templatePlan } from "@/lib/templates";
+
+const FEATURED = ["parthenon", "tomb-of-tutankhamun", "221b-baker-street"].map((id) => TEMPLATES.find((t) => t.id === id)!);
 
 const STEPS = [
   {
@@ -65,6 +69,40 @@ export default function Home() {
           </li>
         ))}
       </ol>
+
+      <section className="mt-16" aria-labelledby="walk-famous">
+        <div className="text-center">
+          <p className="text-xs font-medium uppercase tracking-[0.25em] text-highlight">No account needed</p>
+          <h2 id="walk-famous" className="mt-2 text-3xl font-semibold">
+            Walk a famous place
+          </h2>
+          <p className="mx-auto mt-2 max-w-lg text-muted-foreground">
+            Step into the Parthenon, Tutankhamun&apos;s tomb or 221B Baker Street in 3D. Like one? Make it your palace.
+          </p>
+        </div>
+        <ul className="mt-6 grid gap-4 sm:grid-cols-3">
+          {FEATURED.map((t) => {
+            const plan = templatePlan(t);
+            return (
+              <li key={t.id}>
+                <Link href={`/explore/${t.id}`} className="card-base block overflow-hidden !p-0 hover:shadow-card-hover">
+                  <div className="bg-muted/40 p-4">{plan && <PlanThumb plan={plan} className="h-28 w-full" />}</div>
+                  <div className="p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-highlight">{t.place}</p>
+                    <p className="mt-1 text-lg font-semibold">{t.name}</p>
+                    <p className="mt-1 text-sm text-link">Walk it in 3D {"\u2192"}</p>
+                  </div>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+        <p className="mt-4 text-center text-sm">
+          <Link href="/explore" className="text-link hover:underline">
+            See all famous places
+          </Link>
+        </p>
+      </section>
 
       <p className="mx-auto mt-12 max-w-xl text-center font-display text-lg italic text-muted-foreground">
         Greek and Roman orators memorised whole speeches by walking an imagined building, one image per spot. MemoryPlace gives

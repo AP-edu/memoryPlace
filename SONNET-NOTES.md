@@ -77,6 +77,50 @@ Bugs found and fixed:
 Still unverified: a real phone (touch is emulated via CDP) and the browser's
 own Print dialog (the PDF comes from the same print-media rendering).
 
+## One building + famous places (2026-10-10, Phase M)
+
+User asks: "full 3D render of what the blueprint looks like... recreate
+favourite sites to walk through", a markdown input field for deck answers, and
+"walkthrough in practice mode doesn't do anything".
+
+- **Practice walk bug (root causes):** the walk HUD's "Due first / Walkthrough"
+  was a mode toggle that started nothing (clicking Walkthrough looked dead), and
+  the palace tour always started in the first-created room (often an empty
+  entrance: no stops, no tour) and stopped after one room. Now each order
+  button starts a tour; the tour starts at `tourStartRoom` (first room with due
+  cards) and the summary offers "Continue to <next room>" (`nextTourRoom`),
+  which glides through the connecting door (or flies down from above).
+- **One building:** `WalkView` takes `world` (the palace) and draws every room
+  on the level in the current room's frame; open doors show the real next room
+  instead of sky. Walking through carries the pose (`carryPose`) and the parent
+  swaps the room in place — no remount, no reload (live check asserts
+  `window.__sameDoc`). Both walk routes are `components/walk/PalaceWalk.tsx`,
+  which fetches the palace once (`/api/reviews?palace=` supplies cards + due).
+- **Overview** (button or O): the camera rises over the whole floor, north up,
+  long lens; room labels fly you down into any room. The fly-in is the same
+  blend run backwards, so it now descends from over the whole building.
+- **Famous places:** the Parthenon, House of the Vettii, Tutankhamun's tomb,
+  221B Baker Street, Trinity's Long Room, a family home. `/explore` (public,
+  static) walks them signed out; "Build it" creates the palace with rooms,
+  furniture, door pairs and suggested loci in one request (rolled back on
+  failure). Landing + Palaces tab link to them.
+- **Trace a plan:** upload a photo/scan of any floor plan under the 2D grid,
+  click two points + enter the real distance to set its scale, move it, fade
+  it; rooms turn see-through while tracing. Stored per level in IndexedDB
+  (never uploaded).
+- **Markdown editor:** toolbar (bold, italic, strike, heading, lists,
+  checklist, quote, code, code block, link), shortcuts (Ctrl/Cmd+B/I/K/E,
+  Ctrl+Shift+X, Ctrl+Enter submits), list continuation on Enter, undo keeps
+  working (`execCommand("insertText")`), live preview. Used for deck cards and
+  palace cards; rendering gained GFM (`remark-gfm` 4.0.1, pinned) and is now
+  used in palace-scope study too.
+- **Fixes on the way:** `SceneGate` probed WebGL during SSR (hydration mismatch
+  on pre-rendered 3D pages) — now probes once in the browser; stale floor
+  arrows from the previous room crashed `NavChevrons` for one frame.
+- Verified: tsc, lint, 273 tests, `next build`, livecheck 45/45 on the RTX 5050
+  and 45/45 on the iGPU (60 fps desktop, phone and the 8-room villa).
+- Not verified: a real phone; a big hand-built palace (10+ rooms) on the iGPU.
+
 ## Palace studio + redesign (2026-10-10, Phases K and L)
 
 The user unlocked the design decisions (palette, fonts, navigation, page

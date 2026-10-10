@@ -14,7 +14,7 @@ const TABS = [
 ] as const;
 
 /** Full-screen routes on phones: no bottom bar over the 3D view. */
-const IMMERSIVE = (p: string) => p.startsWith("/walk");
+const IMMERSIVE = (p: string) => p.startsWith("/walk") || p.startsWith("/explore/");
 
 export default function Navbar() {
   const { data: session } = useSession();
@@ -22,6 +22,33 @@ export default function Navbar() {
 
   // Signed-out / landing pages have no navbar; keep appearance reachable.
   if (!session || pathname === "/" || pathname === "/login" || pathname === "/signup") {
+    // A famous-place walk is full screen with its own controls.
+    if (pathname.startsWith("/explore/")) return null;
+    if (pathname === "/explore") {
+      return (
+        <nav className="sticky top-0 z-40 border-b border-border bg-background/85 backdrop-blur print:hidden">
+          <div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-3 px-4 sm:px-6">
+            <Link href="/" className="flex items-center gap-2 text-lg font-extrabold tracking-tight text-foreground" aria-label="MemoryPlace home">
+              <span aria-hidden className="grid h-7 w-7 place-items-center rounded-lg bg-primary text-sm font-black text-primary-foreground">
+                M
+              </span>
+              <span className="hidden sm:inline">MemoryPlace</span>
+            </Link>
+            <div className="flex items-center gap-2">
+              <Menu label="Appearance" trigger={<Palette className="h-4 w-4" aria-hidden />} panelClassName="w-72">
+                {() => <AppearancePicker compact />}
+              </Menu>
+              <Link href="/login" className="btn-ghost px-2">
+                Log in
+              </Link>
+              <Link href="/signup" className="btn-primary !px-3 !py-1.5">
+                Sign up
+              </Link>
+            </div>
+          </div>
+        </nav>
+      );
+    }
     return (
       <div className="fixed right-4 top-4 z-50">
         <Menu label="Appearance" trigger={<Palette className="h-4 w-4" aria-hidden />} panelClassName="w-72">

@@ -1,9 +1,10 @@
 "use client";
-import { Suspense, useState } from "react";
+import { Suspense, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useFetch } from "@/hooks/useFetch";
 import Markdown from "@/components/Markdown";
+import MarkdownEditor from "@/components/MarkdownEditor";
 import PortToPalace from "@/components/decks/PortToPalace";
 import { parseTagInput } from "@/lib/deckLink";
 import type { Deck, Flashcard, Palace } from "@/types/database";
@@ -71,8 +72,8 @@ function FlashcardRow({
     <li className="card-base p-4">
       {editing ? (
         <div className="space-y-2">
-          <textarea className="input-base" rows={2} value={q} onChange={(e) => setQ(e.target.value)} />
-          <textarea className="input-base" rows={2} value={a} onChange={(e) => setA(e.target.value)} />
+          <MarkdownEditor label="Edit question" value={q} onChange={setQ} minRows={1} autoFocus onSubmit={save} />
+          <MarkdownEditor label="Edit answer" value={a} onChange={setA} onSubmit={save} />
           <div className="flex gap-2">
             <button onClick={save} className="btn-primary !px-3 !py-1.5">
               Save
@@ -150,6 +151,7 @@ function DeckDetail() {
   const [portAll, setPortAll] = useState(sp.get("port") === "1");
   const [portOne, setPortOne] = useState<string | null>(null);
   const [tagsText, setTagsText] = useState<string | null>(null);
+  const questionRef = useRef<HTMLTextAreaElement>(null);
 
   if (loading) return <PageSkeleton label="Loading deck" cards={2} />;
   if (error || !deck) {
@@ -174,8 +176,8 @@ function DeckDetail() {
     refetchDeck();
   }
 
-  async function addCard(e: React.FormEvent) {
-    e.preventDefault();
+  async function addCard(e?: React.FormEvent) {
+    e?.preventDefault();
     if (!question.trim() || !answer.trim()) return setFormError("Question and answer required");
     const res = await fetch("/api/flashcards", {
       method: "POST",
@@ -187,6 +189,7 @@ function DeckDetail() {
     setQuestion("");
     setAnswer("");
     refetch();
+    questionRef.current?.focus(); // ready for the next card
   }
 
   const list = cards ?? [];
@@ -264,10 +267,14 @@ function DeckDetail() {
         </div>
       )}
 
-      <form onSubmit={addCard} className="mt-6 space-y-2">
-        <textarea className="input-base" rows={2} placeholder="Question (markdown ok)" aria-label="Question (markdown ok)" value={question} onChange={(e) => setQuestion(e.target.value)} />
-        <textarea className="input-base" rows={2} placeholder="Answer" aria-label="Answer" value={answer} onChange={(e) => setAnswer(e.target.value)} />
-        <button className="btn-primary">Add flashcard</button>
+      <form onSubmit={addCard} className="card-base mt-6 space-y-3 p-4">
+        <h2 className="text-sm font-semibold">New flashcard</h2>
+        <MarkdownEditor label="Question" placeholder="Question" textareaRef={questionRef} value={question} onChange={setQuestion} minRows={1} onSubmit={() => void addCard()} />
+        <MarkdownEditor label="Answer" placeholder="Answer: bold, lists, code and links all work" value={answer} onChange={setAnswer} onSubmit={() => void addCard()} />
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs text-muted-foreground">Select text and use the toolbar, or {"\u2318"}/Ctrl+B, I, K. {"\u2318"}/Ctrl+Enter adds the card.</p>
+          <button className="btn-primary">Add flashcard</button>
+        </div>
       </form>
       {formError && <p className="mt-2 text-sm text-destructive">{formError}</p>}
 

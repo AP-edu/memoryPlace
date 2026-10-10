@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useFetch } from "@/hooks/useFetch";
 import Markdown from "@/components/Markdown";
+import { stripMarkdown } from "@/lib/markdownEdit";
 import { sortPlayQueue } from "@/lib/srs";
 import { ANCHOR_NUDGE } from "@/lib/deckLink";
 import type { ReviewPayload, SessionAnswer } from "@/lib/reviewTypes";
@@ -95,7 +96,7 @@ export default function StudySession({
         roomTitle: card.roomTitle,
         locusId: card.locusId,
         locusLabel: card.locusLabel,
-        label: cardFront(card.card).slice(0, 200),
+        label: stripMarkdown(cardFront(card.card)).slice(0, 200),
       },
     ];
     setAnswers(nextAnswers);
@@ -260,12 +261,12 @@ export default function StudySession({
         <div className="absolute inset-x-0 top-0 h-1.5 bg-linear-to-r from-primary via-accent to-primary" />
         <div className="flex min-h-40 flex-col items-center justify-center">
           <div className="text-xl font-medium leading-relaxed">
-            {data.scope === "deck" ? <Markdown text={cardFront(card.card)} /> : <p>{cardFront(card.card)}</p>}
+            <Markdown text={cardFront(card.card)} />
           </div>
           {/* The question stays up when the answer appears: you grade against both. */}
           {showAnswer && (
             <div className="mt-5 w-full border-t border-border pt-5 text-lg leading-relaxed text-highlight">
-              {data.scope === "deck" ? <Markdown text={cardBack(card.card)} /> : <p>{cardBack(card.card)}</p>}
+              <Markdown text={cardBack(card.card)} />
             </div>
           )}
         </div>
