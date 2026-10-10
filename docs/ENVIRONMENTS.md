@@ -22,7 +22,8 @@ passed the full live check 45/45).
    supabase db push --db-url "postgresql://postgres:<password>@db.<ref>.supabase.co:5432/postgres"
    ```
 
-   Use `--db-url`, not `supabase link`: this repo is linked to production,
+   Percent-encode special characters in the password (`@` → `%40`, `#` →
+   `%23`). Use `--db-url`, not `supabase link`: this repo is linked to production,
    and `db push` without `--db-url` would target it.
 3. **Point local dev at it.** Project Settings → API Keys. In `.env.local`
    replace `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`
