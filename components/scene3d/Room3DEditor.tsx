@@ -379,9 +379,10 @@ export default function Room3DEditor({
             <LocusMarkers
               room={room}
               loci={[{ ...(loci[0] ?? ({} as Locus)), id: "__ghost", label: "", position: 1e9, created_at: "", ...hover }]}
-              colors={{ ...colors, locus: colors.locusActive }}
+              colors={colors}
               showPath={false}
               showLabels={false}
+              ghost
               draggingId="__ghost"
             />
           )}
@@ -412,7 +413,7 @@ export default function Room3DEditor({
             </div>
           ) : (
             <p className="pointer-events-none rounded-lg bg-card/80 px-2 py-1 text-xs text-muted-foreground backdrop-blur">
-              Drag a marker along the walls (Shift = also up/down) · ←/→ slide · ↑/↓ height · Ctrl+Z undo
+              Drag a plaque along the walls (Shift = also up/down) · ←/→ slide · ↑/↓ height · Ctrl+Z undo
             </p>
           )}
         </div>

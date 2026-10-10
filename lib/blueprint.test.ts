@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Locus, Opening, Room } from "@/types/database";
 import type { Level } from "@/types/database";
-import { layoutBlueprint, levelPlanFor, pickMapTarget, playerToPlan, tappableDoors, viewWedge, type BlueprintOpening } from "./blueprint";
+import { groundPlan, layoutBlueprint, levelPlanFor, pickMapTarget, playerToPlan, tappableDoors, viewWedge, type BlueprintOpening } from "./blueprint";
 
 const room = (over: Partial<Room> & { id: string }): Room =>
   ({
@@ -137,8 +137,8 @@ describe("pickMapTarget", () => {
   // Hall's north door spans x 4..6 at y 0 and leads to "lib"; a hall locus hangs just beside it.
   const plan = {
     loci: [
-      { roomId: "hall", n: 1, x: 6.6, y: 0 },
-      { roomId: "lib", n: 1, x: 2, y: -4 },
+      { roomId: "hall", locusId: "h1", n: 1, x: 6.6, y: 0 },
+      { roomId: "lib", locusId: "l1", n: 1, x: 2, y: -4 },
     ],
     openings: [
       { roomId: "hall", targetRoomId: "lib", kind: "door" as const, x1: 4, y1: 0, x2: 6, y2: 0 },
@@ -159,5 +159,22 @@ describe("pickMapTarget", () => {
   it("respects which handlers exist", () => {
     expect(pickMapTarget(plan, "hall", { x: 6.55, y: 0.1 }, 1.3, { loci: false, rooms: true })).toEqual({ kind: "room", roomId: "lib" });
     expect(pickMapTarget(plan, "hall", { x: 5.6, y: 0 }, 1.3, { loci: true, rooms: false })).toEqual({ kind: "locus", n: 1 });
+  });
+});
+
+describe("groundPlan", () => {
+  const lvl = (id: string, idx: number) => ({ id, idx, name: id }) as unknown as Level;
+  it("plans the lowest level, with room colours and numbering by creation", () => {
+    const rooms = [
+      room({ id: "up", level_id: "L2", created_at: "2026-01-01T00:00:00Z" }),
+      room({ id: "a", level_id: "L1", background: "#2f9e44", created_at: "2026-01-02T00:00:00Z" }),
+      room({ id: "b", level_id: null, pos_x: 12, created_at: "2026-01-03T00:00:00Z" }),
+    ];
+    const plan = groundPlan(rooms, [], [], [lvl("L2", 1), lvl("L1", 0)])!;
+    expect(plan.rooms.map((r) => r.id).sort()).toEqual(["a", "b"]);
+    expect(plan.rooms.find((r) => r.id === "a")).toMatchObject({ color: "#2f9e44", number: 2 });
+  });
+  it("is null for a palace without rooms", () => {
+    expect(groundPlan([], [], [], [])).toBeNull();
   });
 });

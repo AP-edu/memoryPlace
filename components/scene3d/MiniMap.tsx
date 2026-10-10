@@ -98,8 +98,12 @@ export default function MiniMap({
                 height={r.h}
                 strokeWidth={stroke * (isCurrent ? 2 : 1)}
                 className={isCurrent ? "fill-primary/20 stroke-primary" : "fill-muted stroke-border"}
+                // Rooms keep their theme colour on the map, as in 3D and on the palace cards.
+                style={{
+                  ...(r.color ? { fill: r.color, fillOpacity: isCurrent ? 0.35 : 0.22 } : {}),
+                  ...(!isCurrent && onGoRoom ? { cursor: "pointer" } : {}),
+                }}
                 onClick={!isCurrent && onGoRoom ? () => onGoRoom(r.id) : undefined}
-                style={!isCurrent && onGoRoom ? { cursor: "pointer" } : undefined}
               >
                 <title>{roomTitles[r.id] ?? r.title}</title>
               </rect>

@@ -89,6 +89,10 @@ async function check(name, fn, { always = false } = {}) {
 }
 
 // ------------------------------------------------------------------ geometry helpers
+/** Plaques sit this far off their wall (components/scene3d/RoomShell.tsx PLAQUE_OFFSET). */
+const PLAQUE_OFFSET = 0.05;
+/** Walk camera eye height (lib/walk.ts EYE_HEIGHT). */
+const EYE_HEIGHT = 1.6;
 /** Room3DEditor's default camera (+ OrbitControls target), in scene coordinates. */
 function editorCamera(room) {
   const camDist = Math.max(room.width, room.depth) * 1.15 + 3;
@@ -429,6 +433,20 @@ async function cleanup(userIds) {
       await page.getByText("Live Check Palace").first().waitFor({ timeout: 10000 });
     });
 
+    await check("home: palace card shows its floor plan; palace hub shows due + learned per room", async () => {
+      await page.goto(`${BASE}/home`);
+      await page.waitForLoadState("networkidle");
+      const card = page.locator("li").filter({ hasText: "Live Check Palace" }).first();
+      const rects = await card.locator("svg rect").count();
+      assert(rects === 2, `thumbnail shows ${rects} rooms (want 2)`);
+      await page.goto(`${BASE}/palaces/${ids.palace}`);
+      await page.waitForLoadState("networkidle");
+      await page.getByRole("heading", { level: 1, name: "Live Check Palace" }).waitFor({ timeout: 10000 });
+      await page.getByText(/\d+ cards · \d+ due/).first().waitFor({ timeout: 10000 });
+      await page.getByText(/1\.\s*Atrium/).first().waitFor({ timeout: 10000 });
+      await page.getByText(/\d+\/\d+ learned/).first().waitFor({ timeout: 10000 });
+    });
+
     await check("palace 3D: renders; clicking a room floor -> + Add loci -> place mode", async () => {
       await page.goto(`${BASE}/palaces/${ids.palace}`);
       await page.waitForLoadState("networkidle");
@@ -549,14 +567,14 @@ async function cleanup(userIds) {
       await ensureEditor();
       if ((await selectBtn().getAttribute("aria-pressed")) !== "true") await selectBtn().click();
       const l = (await lociOf(A.id)).find((x) => x.id === ids.lociA[0]);
-      await drag(project(cam, box, { x: l.wall_offset * 8, y: 1.5, z: 6 - 0.18 }), project(cam, box, { x: 2.6, y: 1.5, z: 5.99 }));
+      await drag(project(cam, box, { x: l.wall_offset * 8, y: 1.5, z: 6 - PLAQUE_OFFSET }), project(cam, box, { x: 2.6, y: 1.5, z: 5.99 }));
       await sleep(1500);
       const moved = (await lociOf(A.id)).find((x) => x.id === l.id);
       assert(Math.abs(moved.wall_offset * 8 - 2.6) < 0.4, `drag landed at ${(moved.wall_offset * 8).toFixed(2)} m`);
       assert(Math.abs(moved.height - 1.5) < 0.01, `plain drag changed height to ${moved.height}`);
       await page.getByText(/Moved Spot 1/).waitFor({ timeout: 3000 });
       // Second drag of the same marker, with the undo snackbar still up.
-      const from = project(cam, box, { x: moved.wall_offset * 8, y: 1.5, z: 6 - 0.18 });
+      const from = project(cam, box, { x: moved.wall_offset * 8, y: 1.5, z: 6 - PLAQUE_OFFSET });
       const to = project(cam, box, { x: moved.wall_offset * 8, y: 2.3, z: 5.99 });
       await page.keyboard.down("Shift");
       await drag(from, to, 10);
@@ -687,6 +705,28 @@ async function cleanup(userIds) {
       return `moved ${moved.toFixed(2)} m`;
     });
 
+    await check("walk: clicking a plaque walks you to it", async () => {
+      if (!page.url().includes(`/walk/${A.id}`)) await openWalk(page, A.id);
+      await page.evaluate(() => window.__walk.teleport(4, 1.2, 0, 0)); // south of centre, facing the north wall
+      await sleep(400);
+      const pose = await page.evaluate(() => ({ ...window.__walk.pose() }));
+      const target = (await lociOf(A.id)).find((l) => l.wall === "north" && Math.abs(l.height - 1.5) < 0.01);
+      assert(target, "no north-wall locus at 1.5 m");
+      // Project the plaque centre through the walk camera (fov 62, eye height from lib/walk.ts).
+      const box = await page.locator("canvas").first().boundingBox();
+      const cam = { pos: [pose.x, EYE_HEIGHT, -pose.z], fov: 62 };
+      const fwd = [Math.sin(pose.yaw) * Math.cos(pose.pitch), Math.sin(pose.pitch), -Math.cos(pose.yaw) * Math.cos(pose.pitch)];
+      cam.target = [cam.pos[0] + fwd[0], cam.pos[1] + fwd[1], cam.pos[2] + fwd[2]];
+      const pt = project(cam, box, { x: target.wall_offset * 8, y: target.height, z: 6 - PLAQUE_OFFSET - 0.02 });
+      await page.mouse.click(pt.x, pt.y);
+      await sleep(1800);
+      const after = await page.evaluate(() => ({ ...window.__walk.pose() }));
+      const d0 = Math.hypot(pose.x - target.wall_offset * 8, pose.z - 6);
+      const d1 = Math.hypot(after.x - target.wall_offset * 8, after.z - 6);
+      assert(d1 < d0 - 0.5, `did not approach ${target.label}: ${d0.toFixed(2)} m -> ${d1.toFixed(2)} m`);
+      return `${target.label}: ${d0.toFixed(1)} m -> ${d1.toFixed(1)} m`;
+    });
+
     await check("walk: minimap door tap opens the next room", async () => {
       await page.locator(`${MAP} circle`).filter({ has: page.locator("title", { hasText: "Go to Library" }) }).click({ force: true });
       await page.waitForURL(new RegExp(`/walk/${ids.B.id}`), { timeout: 10000 });
@@ -699,6 +739,47 @@ async function cleanup(userIds) {
       await go.waitFor({ timeout: 6000 });
       await go.click();
       await page.waitForURL(new RegExp(`/walk/${ids.B.id}`), { timeout: 10000 });
+    });
+
+    await check("study: each card shows its locus and room on the level map", async () => {
+      await page.goto(`${BASE}/study/${A.id}`);
+      await page.getByText(/Locus \d+ · Atrium/).waitFor({ timeout: 15000 });
+      assert((await page.locator(`${MAP}`).count()) === 1, "no level map beside the card");
+      await page.getByRole("button", { name: "Show Answer" }).click();
+      // The question stays visible under the revealed answer.
+      const q = (await json(await api.get(`${BASE}/api/reviews?room=${A.id}`), 200)).items.length;
+      assert(q > 0, "no cards to study");
+    });
+
+    await check("tour: an auto tour waits for the due order and faces the first due locus", async () => {
+      // Make Spot 1's card not due, so due-first starts somewhere else than walk order.
+      const cards = await json(await api.get(`${BASE}/api/cards?room=${A.id}`), 200);
+      const spot1 = cards.find((c) => c.locus_id === ids.lociA[0]);
+      await json(await api.post(`${BASE}/api/reviews`, { data: { card_id: spot1.id, correct: true } }), 200);
+      await openWalk(page, A.id, "?tour=1&debug=1");
+      const tourCard = page.getByRole("dialog", { name: "Tour card" });
+      await tourCard.waitFor({ timeout: 15000 });
+      await sleep(1800); // glide
+      const label = (await tourCard.locator("p.text-lg").first().textContent()).trim();
+      assert(label !== "Spot 1", "tour started at the not-due Spot 1 (walk order)");
+      const pose = await page.evaluate(() => ({ ...window.__walk.pose() }));
+      const loci = await lociOf(A.id);
+      // Which locus does the camera face? (smallest angle between gaze and locus direction)
+      const wallPoint = (l) => {
+        const t = l.wall_offset;
+        return { north: [t * 8, 6], south: [t * 8, 0], east: [8, t * 6], west: [0, t * 6] }[l.wall];
+      };
+      const fwd = [Math.sin(pose.yaw), Math.cos(pose.yaw)];
+      const faced = loci
+        .map((l) => {
+          const [x, z] = wallPoint(l);
+          const v = [x - pose.x, z - pose.z];
+          const n = Math.hypot(...v);
+          return { label: l.label, angle: Math.acos((v[0] * fwd[0] + v[1] * fwd[1]) / n) };
+        })
+        .sort((a, b) => a.angle - b.angle)[0];
+      assert(faced.label === label, `camera faces "${faced.label}" but the card is for "${label}"`);
+      return `first stop ${label}, camera facing it`;
     });
 
     await check("tour: Due first / Walkthrough, MCQ grading, Full summary", async () => {
@@ -889,6 +970,22 @@ async function cleanup(userIds) {
         return `${pages} page(s) -> ${path.relative(root, pdf)}`;
       } finally {
         await page.emulateMedia({ media: null });
+      }
+    });
+
+    await check("landing: logged-out visitors see the demo palace walk", async () => {
+      const anon = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+      try {
+        const p = await anon.newPage();
+        await p.goto(`${BASE}/`);
+        const demo = p.getByRole("img", { name: /memory palace seen from above/ });
+        await demo.waitFor({ timeout: 10000 });
+        assert((await demo.locator("animateMotion").count()) === 1, "no walker on the demo route");
+        assert((await demo.locator("circle").count()) >= 12, "demo loci missing");
+        await p.getByRole("link", { name: /Build your first palace/ }).waitFor();
+        assert((await p.getByRole("button", { name: /Continue with/ }).count()) === 0 || !!process.env.GOOGLE_CLIENT_ID, "unconfigured OAuth button shown");
+      } finally {
+        await anon.close();
       }
     });
 

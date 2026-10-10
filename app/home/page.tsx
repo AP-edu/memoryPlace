@@ -74,7 +74,7 @@ export default function HomePage() {
 
   const firstName = session?.user?.name?.split(" ")[0] ?? "scholar";
   const weekday = today?.toLocaleDateString("en-US", { weekday: "long" }) ?? "";
-  const greeting = today ? `${greetingFor(today.getHours())},` : "Welcome,";
+  const greeting = today ? `${greetingFor(today.getHours())},` : "Welcome back,";
   const dueLine =
     summary.dueToday > 0
       ? `${summary.dueToday} item${summary.dueToday === 1 ? "" : "s"} due today`
@@ -86,11 +86,15 @@ export default function HomePage() {
 
   return (
     <div className="mx-auto max-w-5xl p-4 sm:p-6">
-      <p className="text-sm text-muted-foreground">
-        {greeting} {firstName}.{weekday ? ` ${weekday} — ` : " "}
+      <h1 className="text-3xl font-semibold sm:text-4xl">
+        {greeting} {firstName}
+      </h1>
+      <p className="mb-6 mt-1 text-muted-foreground">
+        {weekday ? `${weekday} · ` : ""}
         {dueLine}
+        {summary.streakDays > 0 ? ` · ${summary.streakDays}-day streak` : ""}
+        {summary.avgScore !== null ? ` · ${Math.round(summary.avgScore * 100)}% recalled lately` : ""}
       </p>
-      <h1 className="mb-6 mt-1 text-3xl font-semibold">Home</h1>
 
       {cont ? (
         <div className="card-base mb-8 p-5">
@@ -130,7 +134,7 @@ export default function HomePage() {
         </Link>
       </div>
       <div className="mb-8">
-        <PalaceList palaces={summary.palaces} onChanged={refetch} limit={3} />
+        <PalaceList palaces={summary.palaces} plans={summary.plans} onChanged={refetch} limit={3} />
       </div>
 
       <div className="mb-3 flex items-baseline justify-between">
@@ -165,23 +169,6 @@ export default function HomePage() {
             )}
           </p>
         )}
-      </div>
-
-      <div className="grid grid-cols-3 gap-3 text-center">
-        <div className="card-base p-4">
-          <p className="font-display text-2xl font-semibold">{summary.streakDays}</p>
-          <p className="text-xs text-muted-foreground">day streak</p>
-        </div>
-        <div className="card-base p-4">
-          <p className="font-display text-2xl font-semibold">
-            {summary.avgScore === null ? "—" : `${Math.round(summary.avgScore * 100)}%`}
-          </p>
-          <p className="text-xs text-muted-foreground">avg score</p>
-        </div>
-        <div className="card-base p-4">
-          <p className="font-display text-2xl font-semibold">{summary.dueToday}</p>
-          <p className="text-xs text-muted-foreground">cards due</p>
-        </div>
       </div>
 
       {showTour && ob && (

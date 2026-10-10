@@ -8,6 +8,8 @@ import { sortPlayQueue } from "@/lib/srs";
 import { ANCHOR_NUDGE } from "@/lib/deckLink";
 import type { ReviewPayload, SessionAnswer } from "@/lib/reviewTypes";
 import { cardBack, cardFront } from "@/types/database";
+import { useLevelPlan } from "@/hooks/useLevelPlan";
+import MiniMap from "@/components/scene3d/MiniMap";
 
 type Mode = "due" | "walk";
 
@@ -40,6 +42,10 @@ export default function StudySession({
 
   const card = queue[index];
   const isLast = index === queue.length - 1;
+  // Where this card lives: the level plan with its room and locus lit, so 2D
+  // review still happens "at" the locus (the point of the method).
+  const plan = useLevelPlan(card?.palaceId, card?.roomId);
+  const locusN = plan?.loci.find((l) => l.locusId === card?.locusId)?.n ?? null;
 
   function switchMode(next: Mode) {
     setMode(next);
@@ -221,12 +227,23 @@ export default function StudySession({
         </button>
       </div>
 
-      <p className="mb-3 text-center text-xs text-muted-foreground">
-        {data.scope === "deck" && !card.linked
-          ? "Deck card"
-          : card.locusLabel || "Unlabelled locus"}
-        {data.scope !== "room" && card.roomTitle ? ` \u00b7 ${card.roomTitle}` : ""}
-      </p>
+      {data.scope === "deck" && !card.linked ? (
+        <p className="mb-3 text-center text-xs text-muted-foreground">Deck card</p>
+      ) : (
+        <div className="mb-4 flex items-center justify-center gap-4">
+          {plan && (
+            <MiniMap plan={plan} currentRoomId={card.roomId} activeLocusN={locusN} className="shrink-0 !shadow-none" />
+          )}
+          <div className={plan ? "min-w-0 text-left" : "text-center"}>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+              {locusN ? `Locus ${locusN}` : "Locus"}
+              {card.roomTitle ? ` \u00b7 ${card.roomTitle}` : ""}
+            </p>
+            <p className="font-display text-xl leading-tight">{card.locusLabel || "Unlabelled locus"}</p>
+            <p className="mt-1 text-xs text-muted-foreground">Picture this spot, then recall what you left there.</p>
+          </div>
+        </div>
+      )}
       {data.scope === "deck" && !card.linked && data.deckId && (
         <p className="mb-3 rounded-lg border border-accent/40 bg-accent/10 px-3 py-2 text-center text-xs text-highlight">
           {ANCHOR_NUDGE}{" "}
@@ -238,14 +255,16 @@ export default function StudySession({
 
       <div className="card-base relative overflow-hidden p-10 text-center">
         <div className="absolute inset-x-0 top-0 h-1.5 bg-linear-to-r from-primary via-accent to-primary" />
-        <div className="flex min-h-40 items-center justify-center">
+        <div className="flex min-h-40 flex-col items-center justify-center">
           <div className="text-xl font-medium leading-relaxed">
-            {data.scope === "deck" ? (
-              <Markdown text={showAnswer ? cardBack(card.card) : cardFront(card.card)} />
-            ) : (
-              <p>{showAnswer ? cardBack(card.card) : cardFront(card.card)}</p>
-            )}
+            {data.scope === "deck" ? <Markdown text={cardFront(card.card)} /> : <p>{cardFront(card.card)}</p>}
           </div>
+          {/* The question stays up when the answer appears: you grade against both. */}
+          {showAnswer && (
+            <div className="mt-5 w-full border-t border-border pt-5 text-lg leading-relaxed text-highlight">
+              {data.scope === "deck" ? <Markdown text={cardBack(card.card)} /> : <p>{cardBack(card.card)}</p>}
+            </div>
+          )}
         </div>
       </div>
 

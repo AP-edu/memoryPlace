@@ -2,6 +2,8 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { PalaceCounts } from "@/lib/homeSummary";
+import type { Blueprint } from "@/lib/blueprint";
+import PlanThumb from "./PlanThumb";
 
 /**
  * Palace create form + grid, shared by /palaces (full list, search) and /home
@@ -10,11 +12,14 @@ import type { PalaceCounts } from "@/lib/homeSummary";
  */
 export default function PalaceList({
   palaces,
+  plans = {},
   onChanged,
   limit,
   searchable = false,
 }: {
   palaces: PalaceCounts[];
+  /** Ground-floor plan per palace id (from /api/home/summary) for the card thumbnails. */
+  plans?: Record<string, Blueprint>;
   onChanged: () => void;
   limit?: number;
   searchable?: boolean;
@@ -62,8 +67,8 @@ export default function PalaceList({
     onChanged();
   }
 
-  return (
-    <div>
+  const createForm = (
+    <>
       <form onSubmit={handleCreate} data-tour="palace-form" className="mb-4 flex gap-2 rounded-2xl">
         <label className="sr-only" htmlFor="new-palace-title">
           New palace title
@@ -75,7 +80,7 @@ export default function PalaceList({
           placeholder="New palace title"
           className="input-base flex-1"
         />
-        <button className="btn-primary" disabled={busy}>
+        <button className={palaces.length === 0 ? "btn-primary" : "btn-outline"} disabled={busy}>
           {busy ? "Adding…" : "Add palace"}
         </button>
       </form>
@@ -84,7 +89,12 @@ export default function PalaceList({
           {formError}
         </p>
       )}
+    </>
+  );
 
+  return (
+    <div>
+      {palaces.length === 0 && createForm}
       {searchable && palaces.length > 3 && (
         <div className="mb-4">
           <label className="sr-only" htmlFor="palace-search">
@@ -110,40 +120,74 @@ export default function PalaceList({
       ) : shown.length === 0 ? (
         <p className="text-sm text-muted-foreground">No palaces match “{q}”.</p>
       ) : (
-        <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {shown.map((p) => (
-            <li key={p.palaceId} className="card-base group flex flex-col p-4 hover:shadow-card-hover">
-              <div className="flex items-start justify-between gap-2">
-                <Link href={`/palaces/${p.palaceId}`} className="text-lg font-semibold transition-colors group-hover:text-link">
-                  {p.title}
+        <ul className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {shown.map((p) => {
+            const plan = plans[p.palaceId];
+            return (
+              <li key={p.palaceId} className="card-base group flex flex-col overflow-hidden !p-0 hover:shadow-card-hover">
+                <Link
+                  href={`/palaces/${p.palaceId}`}
+                  className="block border-b border-border bg-muted/40 px-4 py-3"
+                  aria-label={`Open ${p.title} blueprint`}
+                  tabIndex={-1}
+                >
+                  {plan ? (
+                    <PlanThumb plan={plan} className="h-28 w-full" />
+                  ) : (
+                    <div className="grid h-28 place-items-center text-xs text-muted-foreground">No rooms drawn yet</div>
+                  )}
                 </Link>
-                <button onClick={() => handleDelete(p)} className="btn-danger shrink-0" aria-label={`Delete ${p.title}`}>
-                  Delete
-                </button>
-              </div>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                {p.rooms} room{p.rooms === 1 ? "" : "s"} · {p.cards} card{p.cards === 1 ? "" : "s"}
-                {p.due > 0 ? ` · ${p.due} due` : ""}
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Link href={`/palaces/${p.palaceId}`} className="btn-outline !px-3 !py-1.5">
-                  {p.rooms === 0 ? "Draw rooms" : "Open"}
-                </Link>
-                {p.rooms > 0 && p.cards > 0 && (
-                  <Link href={`/walk/palace/${p.palaceId}?tour=1`} className="btn-primary !px-3 !py-1.5">
-                    Walk
-                  </Link>
-                )}
-                {p.due > 0 && (
-                  <Link href={`/study/palace/${p.palaceId}`} className="btn-ghost">
-                    Study {p.due} due
-                  </Link>
-                )}
-              </div>
-            </li>
-          ))}
+                <div className="flex flex-1 flex-col p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <Link href={`/palaces/${p.palaceId}`} className="text-lg font-semibold leading-snug transition-colors group-hover:text-link">
+                      {p.title}
+                    </Link>
+                    <details className="relative shrink-0">
+                      <summary
+                        className="cursor-pointer list-none rounded-lg px-2 leading-7 text-muted-foreground hover:bg-muted hover:text-foreground [&::-webkit-details-marker]:hidden"
+                        aria-label={`More actions for ${p.title}`}
+                      >
+                        {"\u22EF"}
+                      </summary>
+                      <div className="absolute right-0 z-10 mt-1 w-44 rounded-xl border border-border bg-card p-1 shadow-lg">
+                        <Link href={`/palaces/${p.palaceId}/print`} className="block rounded-lg px-3 py-1.5 text-sm hover:bg-muted">
+                          Print blueprint
+                        </Link>
+                        <button
+                          onClick={() => handleDelete(p)}
+                          className="block w-full rounded-lg px-3 py-1.5 text-left text-sm text-destructive hover:bg-destructive/10"
+                        >
+                          Delete palace…
+                        </button>
+                      </div>
+                    </details>
+                  </div>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {p.rooms} room{p.rooms === 1 ? "" : "s"} · {p.cards} card{p.cards === 1 ? "" : "s"}
+                    {p.due > 0 && <span className="font-medium text-highlight"> · {p.due} due</span>}
+                  </p>
+                  <div className="mt-auto flex flex-wrap gap-2 pt-3">
+                    {p.rooms > 0 && p.cards > 0 && (
+                      <Link href={`/walk/palace/${p.palaceId}?tour=1`} className="btn-primary !px-3 !py-1.5">
+                        {"\u25B6"} Walk
+                      </Link>
+                    )}
+                    {p.due > 0 && (
+                      <Link href={`/study/palace/${p.palaceId}`} className="btn-outline !px-3 !py-1.5">
+                        Study {p.due}
+                      </Link>
+                    )}
+                    <Link href={`/palaces/${p.palaceId}`} className="btn-ghost">
+                      {p.rooms === 0 ? "Draw rooms" : "Blueprint"}
+                    </Link>
+                  </div>
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
+      {palaces.length > 0 && createForm}
     </div>
   );
 }

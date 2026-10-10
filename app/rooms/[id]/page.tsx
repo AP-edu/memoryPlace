@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useFetch } from "@/hooks/useFetch";
 import { useSearchParam } from "@/hooks/useSearchParam";
 import { useLevelPlan } from "@/hooks/useLevelPlan";
-import type { Card, Locus, Opening, Room, WallFace } from "@/types/database";
+import type { Card, Locus, Opening, Palace, Room, WallFace } from "@/types/database";
 import { httpLociActions } from "@/components/scene3d/actions";
 import ImportFromDeck from "@/components/decks/ImportFromDeck";
 import SendToDeck from "@/components/decks/SendToDeck";
@@ -24,6 +24,7 @@ export default function RoomPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { data: room, refetch: refetchRoom } = useFetch<Room>(id ? `/api/rooms/${id}` : null);
+  const { data: palace } = useFetch<Palace>(room?.palace_id ? `/api/palaces/${room.palace_id}` : null);
   const { data: loci, loading: loadingLoci, error: lociError, refetch: refetchLoci } = useFetch<Locus[]>(
     id ? `/api/loci?room=${id}` : null
   );
@@ -135,13 +136,29 @@ export default function RoomPage() {
 
   return (
     <div className="mx-auto max-w-5xl p-4 sm:p-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        {room?.palace_id && (
-          <Link href={`/palaces/${room.palace_id}`} className="btn-ghost">
-            {"\u2190 Back to palace blueprint"}
-          </Link>
-        )}
-        <div className="flex items-center gap-3 text-sm">
+      {room?.palace_id && (
+        <Link href={`/palaces/${room.palace_id}`} className="btn-ghost">
+          {"\u2190 "}
+          {palace?.title ?? "Palace"}
+        </Link>
+      )}
+      <header className="mt-2 mb-4 flex flex-wrap items-end justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="truncate text-3xl font-semibold sm:text-4xl">{room.title}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {room.width} × {room.depth} × {room.height} m · {loci?.length ?? 0} loci · {cards?.length ?? 0} cards — click a wall to place a locus, drag
+            plaques to move them.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <button onClick={() => setDeckPanel(deckPanel === "import" ? null : "import")} className="btn-ghost">
+            Import deck
+          </button>
+          {(cards?.length ?? 0) > 0 && (
+            <button onClick={() => setDeckPanel(deckPanel === "send" ? null : "send")} className="btn-ghost">
+              Export to deck
+            </button>
+          )}
           <Link href={`/study/${room.id}`} className="btn-outline !px-3 !py-1.5">
             Study
           </Link>
@@ -149,21 +166,10 @@ export default function RoomPage() {
             Walk
           </Link>
           <Link href={`/walk/${room.id}?tour=1`} className="btn-primary !px-3 !py-1.5">
-            Tour loci
+            {"\u25B6"} Tour loci
           </Link>
-          <button onClick={() => setDeckPanel(deckPanel === "import" ? null : "import")} className="btn-outline !px-3 !py-1.5">
-            Import deck
-          </button>
-          {(cards?.length ?? 0) > 0 && (
-            <button onClick={() => setDeckPanel(deckPanel === "send" ? null : "send")} className="btn-outline !px-3 !py-1.5">
-              Export to deck
-            </button>
-          )}
-          <button onClick={deleteRoom} className="btn-danger">
-            Delete room
-          </button>
         </div>
-      </div>
+      </header>
       {deckPanel === "import" && (
         <div className="mt-3">
           <ImportFromDeck
@@ -190,35 +196,6 @@ export default function RoomPage() {
         </div>
       )}
 
-      <div className="mt-3 mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-3xl font-semibold">Room Editor</h1>
-        <p className="text-sm text-muted-foreground">Click a wall to place a locus, drag markers, attach cards.</p>
-      </div>
-
-      <div className="card-base mb-4 flex flex-wrap items-end gap-2 p-4">
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-muted-foreground">Title</label>
-          <input value={roomTitle} onChange={(e) => setRoomTitle(e.target.value)} className="input-base w-52" aria-label="Room title" />
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-muted-foreground">Width (w)</label>
-          <input value={roomW} onChange={(e) => setRoomW(e.target.value)} type="number" min={1} step={1} className="input-base w-24" aria-label="Room width" />
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-muted-foreground">Depth (d)</label>
-          <input value={roomD} onChange={(e) => setRoomD(e.target.value)} type="number" min={1} step={1} className="input-base w-24" aria-label="Room depth" />
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-muted-foreground">Height (h)</label>
-          <input value={roomH} onChange={(e) => setRoomH(e.target.value)} type="number" min={0.5} step={0.1} className="input-base w-24" aria-label="Room height" />
-        </div>
-        <button onClick={saveRoomGeometry} className="btn-primary">
-          Save room
-        </button>
-        <p className="ml-auto max-w-52 text-xs text-muted-foreground">
-          Loci stay anchored when size changes — offsets are relative to each wall.
-        </p>
-      </div>
 
       {formError && <p className="mb-4 text-sm text-destructive">{formError}</p>}
 
@@ -237,6 +214,39 @@ export default function RoomPage() {
             refetchCards();
           }}
         />
+      </div>
+
+      <div className="card-base mb-4 p-4">
+        <h2 className="mb-3 font-semibold">Room details</h2>
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-muted-foreground">Title</label>
+            <input value={roomTitle} onChange={(e) => setRoomTitle(e.target.value)} className="input-base w-52" aria-label="Room title" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-muted-foreground">Width (w)</label>
+            <input value={roomW} onChange={(e) => setRoomW(e.target.value)} type="number" min={1} step={1} className="input-base w-24" aria-label="Room width" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-muted-foreground">Depth (d)</label>
+            <input value={roomD} onChange={(e) => setRoomD(e.target.value)} type="number" min={1} step={1} className="input-base w-24" aria-label="Room depth" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-muted-foreground">Height (h)</label>
+            <input value={roomH} onChange={(e) => setRoomH(e.target.value)} type="number" min={0.5} step={0.1} className="input-base w-24" aria-label="Room height" />
+          </div>
+          <button onClick={saveRoomGeometry} className="btn-primary">
+            Save room
+          </button>
+          <p className="ml-auto max-w-52 text-xs text-muted-foreground">
+            Loci stay anchored when size changes — offsets are relative to each wall.
+          </p>
+        </div>
+        <div className="mt-4 border-t border-border pt-3">
+          <button onClick={deleteRoom} className="text-sm text-destructive hover:underline">
+            Delete this room…
+          </button>
+        </div>
       </div>
 
       <div className="card-base p-4">

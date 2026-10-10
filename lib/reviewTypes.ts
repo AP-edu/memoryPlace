@@ -9,6 +9,8 @@ export interface ReviewItem {
   locusLabel: string;
   roomId: string;
   roomTitle: string;
+  /** Palace the locus's room belongs to (null for unanchored deck cards). */
+  palaceId: string | null;
   roomOrder: number;
   position: number;
   review: CardReview | null;

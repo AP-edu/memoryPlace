@@ -133,7 +133,7 @@ export default function DecksPage() {
                 <Link href={`/decks/${d.id}`} className="btn-outline !px-3 !py-1.5">
                   Open
                 </Link>
-                <button onClick={() => handleDelete(d.id)} className="btn-ghost text-destructive">
+                <button onClick={() => handleDelete(d.id)} className="btn-ghost text-muted-foreground hover:!text-destructive">
                   Delete
                 </button>
               </div>

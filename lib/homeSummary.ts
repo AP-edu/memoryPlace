@@ -2,6 +2,7 @@
 // The /api/home/summary route fetches flat rows; everything below rolls them
 // into the summary and is unit-tested here. Due semantics mirror lib/srs.ts:
 // a card with no review row is brand-new and due now.
+import type { Blueprint } from "./blueprint";
 
 export interface SummaryPalace {
   id: string;
@@ -75,6 +76,8 @@ export interface HomeSummary {
   /** 0..1, null when no scored sessions yet. */
   avgScore: number | null;
   decks: DeckCounts;
+  /** Ground-level plan per palace id, for card thumbnails (route-level). */
+  plans?: Record<string, Blueprint>;
   /** Guided-onboarding state (route-level; not part of the pure rollups). */
   onboarding?: {
     onboardedAt: string | null;

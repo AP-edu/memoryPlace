@@ -13,6 +13,15 @@ export function useFetch<T>(url: string | null): UseFetchResult<T> {
   const [loading, setLoading] = useState(!!url);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  // A new URL never shows the previous URL's data (e.g. the palace tour moving
+  // to the next room): reset during render, before anything reads it.
+  const [prevUrl, setPrevUrl] = useState(url);
+  if (url !== prevUrl) {
+    setPrevUrl(url);
+    setData(null);
+    setError(null);
+    setLoading(!!url);
+  }
 
   const refetch = useCallback(() => {
     setRefreshKey((k) => k + 1);

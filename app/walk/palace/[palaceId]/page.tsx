@@ -36,12 +36,14 @@ export default function PalaceWalkPage() {
   const { data: loci } = useFetch<Locus[]>(currentId ? `/api/loci?room=${currentId}` : null);
   const { data: openings } = useFetch<Opening[]>(currentId ? `/api/openings?room=${currentId}` : null);
   const { data: cards } = useFetch<Card[]>(currentId ? `/api/cards?room=${currentId}` : null);
-  const { data: reviewQueue } = useFetch<{ items: QueueItem[]; now: number }>(
+  const { data: reviewQueue, loading: reviewLoading } = useFetch<{ items: QueueItem[]; now: number }>(
     currentId ? `/api/reviews?room=${currentId}` : null
   );
+  // undefined = still loading (the tour waits), null = settled without an order.
   const cardOrder = useMemo(
-    () => (reviewQueue ? sortPlayQueue(reviewQueue.items, "due", reviewQueue.now).map((i) => i.id) : undefined),
-    [reviewQueue]
+    () =>
+      reviewQueue ? sortPlayQueue(reviewQueue.items, "due", reviewQueue.now).map((i) => i.id) : reviewLoading ? undefined : null,
+    [reviewQueue, reviewLoading]
   );
 
   const roomTitles = useMemo(() => Object.fromEntries((orderedRooms ?? []).map((r) => [r.id, r.title])), [orderedRooms]);
@@ -158,10 +160,10 @@ export default function PalaceWalkPage() {
         className="h-[calc(100dvh-3.5rem)]"
         actions={
           <>
-            <Link href={`/palaces/${palaceId}`} className="btn-outline bg-card">
+            <Link href={`/palaces/${palaceId}`} className="btn-outline bg-card max-sm:!px-3 max-sm:!py-1.5">
               ← Palace
             </Link>
-            <Link href={`/rooms/${room.id}`} className="btn-outline bg-card">
+            <Link href={`/rooms/${room.id}`} className="btn-outline bg-card max-sm:!px-3 max-sm:!py-1.5">
               Edit room
             </Link>
           </>

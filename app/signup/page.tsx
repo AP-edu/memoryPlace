@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { signIn } from "next-auth/react";
 import { isValidEmail, MIN_PASSWORD_LENGTH, normalizeEmail } from "@/lib/email";
+import OAuthButtons from "@/components/OAuthButtons";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -88,6 +89,7 @@ export default function SignupPage() {
             {sending ? "Creating account…" : "Create Account"}
           </button>
         </form>
+        <OAuthButtons />
         <div className="my-4 flex items-center gap-3 text-xs text-muted-foreground">
           <span className="h-px flex-1 bg-border" aria-hidden />
           or

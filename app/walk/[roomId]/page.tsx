@@ -24,13 +24,14 @@ export default function WalkPage() {
   const { data: siblings } = useFetch<Room[]>(room?.palace_id ? `/api/rooms?palace=${room.palace_id}` : null);
   // Due-first tour order, shared with the 2D study session (lib/srs.ts).
   // Absent (or failed) reviews data falls back to canonical walk order.
-  const { data: reviewQueue } = useFetch<{ items: QueueItem[]; now: number }>(
+  const { data: reviewQueue, loading: reviewLoading } = useFetch<{ items: QueueItem[]; now: number }>(
     roomId ? `/api/reviews?room=${roomId}` : null
   );
+  // undefined = still loading (the tour waits), null = settled without an order.
   const cardOrder = useMemo(
     () =>
-      reviewQueue ? sortPlayQueue(reviewQueue.items, "due", reviewQueue.now).map((i) => i.id) : undefined,
-    [reviewQueue]
+      reviewQueue ? sortPlayQueue(reviewQueue.items, "due", reviewQueue.now).map((i) => i.id) : reviewLoading ? undefined : null,
+    [reviewQueue, reviewLoading]
   );
 
   // Where we came from (?from=<roomId>) decides the spawn door.
@@ -120,11 +121,11 @@ export default function WalkPage() {
       actions={
         <>
           {room.palace_id && (
-            <Link href={`/palaces/${room.palace_id}`} className="btn-outline bg-card">
+            <Link href={`/palaces/${room.palace_id}`} className="btn-outline bg-card max-sm:!px-3 max-sm:!py-1.5">
               {"\u2190"} Palace
             </Link>
           )}
-          <Link href={`/rooms/${room.id}`} className="btn-outline bg-card">
+          <Link href={`/rooms/${room.id}`} className="btn-outline bg-card max-sm:!px-3 max-sm:!py-1.5">
             Edit room
           </Link>
         </>

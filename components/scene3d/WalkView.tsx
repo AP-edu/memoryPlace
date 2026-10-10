@@ -355,6 +355,7 @@ export interface WalkViewProps {
    * Due-first card order (card ids, e.g. from
    * `sortPlayQueue(items, "due", now)`). When provided the tour offers a
    * Due first / Walkthrough toggle; Walkthrough keeps canonical order.
+   * `undefined` = still loading (an auto tour waits for it), `null` = none.
    */
   cardOrder?: string[] | null;
   className?: string;
@@ -374,7 +375,7 @@ export default function WalkView({
   onGoRoom,
   actions,
   autoTour = false,
-  cardOrder = null,
+  cardOrder,
   className = "h-dvh",
 }: WalkViewProps) {
   const colors = useSceneColors();
@@ -399,7 +400,7 @@ export default function WalkView({
   // passes a card order and the player picks it. Same semantics as the 2D
   // study session (lib/srs.ts sortPlayQueue), so both agree.
   const [tourMode, setTourMode] = useState<"due" | "walk">("due");
-  const stops = useMemo<Stop[]>(() => {
+  const liveStops = useMemo<Stop[]>(() => {
     const base = buildTourStops(loci, cards);
     if (tourMode === "due" && cardOrder && cardOrder.length > 0) return orderTourStopsByCards(base, cardOrder);
     return base;
@@ -472,6 +473,10 @@ export default function WalkView({
 
   // ---------------------------------------------------------------- tour
   const [tour, setTour] = useState<{ index: number; revealed: boolean; results: Record<string, boolean> } | null>(null);
+  // A running tour keeps the order it started with: a late review fetch or a
+  // card refetch must never reshuffle the stops under the learner.
+  const [tourStops, setTourStops] = useState<Stop[] | null>(null);
+  const stops = tour && tourStops ? tourStops : liveStops;
   const [summary, setSummary] = useState<{ got: number; total: number; href?: string | null } | null>(null);
   const stop = tour ? stops[tour.index] ?? null : null;
 
@@ -487,12 +492,13 @@ export default function WalkView({
   );
 
   const startTour = useCallback(() => {
-    if (stops.length === 0) return;
+    if (liveStops.length === 0) return;
     setSummary(null);
     setRevealedCards({});
+    setTourStops(liveStops);
     setTour({ index: 0, revealed: false, results: {} });
-    glideTo(stops[0]);
-  }, [stops, glideTo]);
+    glideTo(liveStops[0]);
+  }, [liveStops, glideTo]);
 
   // Tour end: show the local summary now, persist the session + answers in
   // the background so the full /results summary can be linked when it lands.
@@ -573,11 +579,12 @@ export default function WalkView({
 
   const autoStarted = useRef(false);
   useEffect(() => {
-    if (autoTour && !autoStarted.current && stops.length > 0) {
+    // Wait for the due order to settle so the tour doesn't start in walk order.
+    if (autoTour && !autoStarted.current && liveStops.length > 0 && cardOrder !== undefined) {
       autoStarted.current = true;
       startTour();
     }
-  }, [autoTour, stops.length, startTour]);
+  }, [autoTour, liveStops.length, cardOrder, startTour]);
 
   // ---------------------------------------------------------------- input
   const tourRef = useRef({ tour, stop, goto, grade, startTour, stepNav, choose, mcq });
@@ -701,6 +708,17 @@ export default function WalkView({
     // they reset when a tour starts (see startTour), not on every focus change.
   }
 
+  // Graded loci during a tour keep their colour: the room becomes a map of
+  // what you recalled (green) and where you slipped (red).
+  const lociResults = useMemo(() => {
+    if (!tour) return null;
+    const m: Record<string, boolean> = {};
+    for (const st of stops) {
+      const r = tour.results[st.key];
+      if (r !== undefined) m[st.locus.id] = (m[st.locus.id] ?? true) && r;
+    }
+    return m;
+  }, [tour, stops]);
   const focused = !tour && focusedId ? items.find((i) => i.locus.id === focusedId) ?? null : null;
   /** A bottom card owns the bottom of the screen (phones hide the minimap + joystick under it). */
   const cardOpen = !!tour || !!summary || (!!focused && dismissedId !== focused.locus.id);
@@ -713,7 +731,10 @@ export default function WalkView({
   const mapLocusId = (n: number) => tourOrder(loci)[n - 1]?.id;
   function goMapLocus(n: number) {
     const id = mapLocusId(n);
-    if (!id) return;
+    if (id) goToLocus(id);
+  }
+  /** Glide to a locus (minimap tap or a click on its plaque); in a tour, jump to its stop. */
+  function goToLocus(id: string) {
     if (tour) {
       const i = stops.findIndex((s) => s.locus.id === id);
       if (i >= 0) goto(i);
@@ -744,14 +765,27 @@ export default function WalkView({
           <Canvas
             dpr={[1, 2]}
             gl={{ antialias: true, powerPreference: "high-performance", failIfMajorPerformanceCaveat: false }}
-            camera={{ fov: 70, near: 0.05, far: 120 }}
+            camera={{ fov: 62, near: 0.05, far: 120 }}
           >
           <color attach="background" args={[colors.horizon]} />
           <fog attach="fog" args={[colors.fog, 12, 40]} />
           <SceneSky colors={colors} radius={100} />
           <SceneLights colors={colors} />
           <RoomShell room={room} openings={openings} colors={colors} />
-          <LocusMarkers room={room} loci={loci} colors={colors} selectedId={stop?.locus.id ?? focused?.locus.id ?? null} showPath={!!tour} />
+          <LocusMarkers
+            room={room}
+            loci={loci}
+            colors={colors}
+            selectedId={stop?.locus.id ?? focused?.locus.id ?? null}
+            showPath={!!tour}
+            labelFade={6}
+            results={lociResults}
+            onMarkerClick={(locus, e) => {
+              if (e.delta > 4) return; // end of a look-around drag
+              e.stopPropagation();
+              goToLocus(locus.id);
+            }}
+          />
           <DoorSigns room={room} openings={openings} roomTitles={roomTitles} />
           {!tour && <NavChevrons arrows={arrows} stops={nav} roomTitles={roomTitles} colors={colors} onGo={goStop} />}
           <PlayerRig
@@ -773,15 +807,27 @@ export default function WalkView({
       </div>
 
       <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-wrap items-start justify-between gap-2 p-4">
-        <div className="card-base pointer-events-auto px-3 py-2">
+        <div className="card-base pointer-events-auto max-w-[min(26rem,100%)] px-3 py-2 max-sm:py-1.5">
           <p className="text-sm font-semibold">{room.title}</p>
           <p className="text-xs text-muted-foreground">
-            {tour
-              ? `Tour · stop ${tour.index + 1} of ${stops.length}`
-              : outside
-                ? "Outside: walk back through a door"
-                : `${lociCount} loci · click floor arrows or ↑/↓ to step · WASD walk · drag to look · T tour`}
+            {tour ? (
+              `Tour · stop ${tour.index + 1} of ${stops.length}`
+            ) : outside ? (
+              "Outside: walk back through a door"
+            ) : (
+              <>
+                {lociCount} loci
+                <span className="pointer-coarse:hidden"> · floor arrows or ↑/↓ to step · WASD walk · drag to look · T tour</span>
+                <span className="hidden pointer-coarse:inline"> · drag to look · stick to walk · tap the floor arrows</span>
+              </>
+            )}
           </p>
+          {/* Phones: the page actions ride along as small links here, freeing a row of buttons. */}
+          {actions && (
+            <div className="mt-1 hidden gap-3 text-xs max-sm:flex [&_a]:!border-0 [&_a]:!bg-transparent [&_a]:!p-0 [&_a]:!text-xs [&_a]:!font-medium [&_a]:!text-link [&_a]:!shadow-none">
+              {actions}
+            </div>
+          )}
         </div>
         <div className="pointer-events-auto flex flex-wrap gap-2">
           {!tour && cardOrder && cardOrder.length > 0 && (
@@ -790,7 +836,7 @@ export default function WalkView({
                 type="button"
                 onClick={() => switchTourMode("due")}
                 aria-pressed={tourMode === "due"}
-                className={`px-3 py-2 text-sm font-medium ${tourMode === "due" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                className={`px-3 py-2 text-sm font-medium max-sm:px-2.5 max-sm:py-1.5 ${tourMode === "due" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
               >
                 Due first
               </button>
@@ -798,14 +844,14 @@ export default function WalkView({
                 type="button"
                 onClick={() => switchTourMode("walk")}
                 aria-pressed={tourMode === "walk"}
-                className={`px-3 py-2 text-sm font-medium ${tourMode === "walk" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                className={`px-3 py-2 text-sm font-medium max-sm:px-2.5 max-sm:py-1.5 ${tourMode === "walk" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
               >
                 Walkthrough
               </button>
             </div>
           )}
           {!tour && stops.length > 0 && (
-            <button type="button" onClick={startTour} className="btn-primary">
+            <button type="button" onClick={startTour} className="btn-primary max-sm:!px-3 max-sm:!py-1.5">
               {"\u25B6"} Start tour
             </button>
           )}
@@ -814,7 +860,7 @@ export default function WalkView({
               End tour
             </button>
           )}
-          {actions}
+          {actions && <div className="flex gap-2 max-sm:hidden">{actions}</div>}
         </div>
       </div>
 
