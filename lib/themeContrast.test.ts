@@ -41,13 +41,32 @@ const PAIRS: Array<[string, string]> = [
   ["success-foreground", "success"],
 ];
 
+// Every palette in both modes: base tokens, then the palette's overrides.
+const root = tokens(":root");
+const baseDark = { ...root, ...tokens(".dark") };
+const THEMES: Array<[string, Record<string, string>]> = [
+  ["aegean light", root],
+  ["aegean dark", baseDark],
+  ...(["library", "modern"] as const).flatMap((p): Array<[string, Record<string, string>]> => [
+    [`${p} light`, { ...root, ...tokens(`[data-palette="${p}"]:not(.dark)`) }],
+    [`${p} dark`, { ...baseDark, ...tokens(`[data-palette="${p}"].dark`) }],
+  ]),
+];
+
+describe("palettes are complete", () => {
+  it("each palette block overrides every colour token", () => {
+    const keys = Object.keys(root).filter((k) => !k.startsWith("scene-"));
+    for (const p of ["library", "modern"]) {
+      for (const sel of [`[data-palette="${p}"]:not(.dark)`, `[data-palette="${p}"].dark`]) {
+        const t = tokens(sel);
+        for (const k of keys) expect(t[k], `${sel} --${k}`).toBeDefined();
+      }
+    }
+  });
+});
+
 describe("theme tokens meet WCAG AA", () => {
-  const light = tokens(":root");
-  const dark = { ...light, ...tokens(".dark") };
-  for (const [name, t] of [
-    ["light", light],
-    ["dark", dark],
-  ] as const) {
+  for (const [name, t] of THEMES) {
     it(`${name} theme`, () => {
       for (const [fg, bg] of PAIRS) {
         expect(t[fg], `${name} --${fg}`).toBeDefined();
@@ -62,21 +81,24 @@ describe("scene tokens", () => {
   const light = tokens(":root");
   const dark = { ...light, ...tokens(".dark") };
   const REQUIRED = ["sky", "horizon", "fog", "floor", "wall", "door", "archway", "locus", "locus-active", "path", "grid"];
-  for (const [name, t] of [
-    ["light", light],
-    ["dark", dark],
-  ] as const) {
+  for (const [name, t] of THEMES) {
     it(`${name} defines every --scene-* token`, () => {
       for (const k of REQUIRED) expect(t[`scene-${k}`], `${name} --scene-${k}`).toBeDefined();
     });
   }
-  it("night sky is darker than day sky and walls stay distinct from floors", () => {
-    expect(lum(dark["scene-sky"])).toBeLessThan(lum(light["scene-sky"]));
-    expect(ratio(light["scene-wall"], light["scene-floor"])).toBeGreaterThan(1.05);
-    expect(ratio(dark["scene-wall"], dark["scene-floor"])).toBeGreaterThan(1.3);
-  });
-  it("markers read against the floor in both themes", () => {
-    expect(ratio(light["scene-locus"], light["scene-floor"])).toBeGreaterThanOrEqual(3);
-    expect(ratio(dark["scene-locus"], dark["scene-floor"])).toBeGreaterThanOrEqual(3);
-  });
+  const pairs = [["aegean", light, dark]] as Array<[string, Record<string, string>, Record<string, string>]>;
+  for (const p of ["library", "modern"]) {
+    pairs.push([p, { ...light, ...tokens(`[data-palette="${p}"]:not(.dark)`) }, { ...dark, ...tokens(`[data-palette="${p}"].dark`) }]);
+  }
+  for (const [p, l, d] of pairs) {
+    it(`${p}: night sky is darker than day sky and walls stay distinct from floors`, () => {
+      expect(lum(d["scene-sky"])).toBeLessThan(lum(l["scene-sky"]));
+      expect(ratio(l["scene-wall"], l["scene-floor"])).toBeGreaterThan(1.05);
+      expect(ratio(d["scene-wall"], d["scene-floor"])).toBeGreaterThan(1.3);
+    });
+    it(`${p}: markers read against the floor in both modes`, () => {
+      expect(ratio(l["scene-locus"], l["scene-floor"]), `${p} light`).toBeGreaterThanOrEqual(3);
+      expect(ratio(d["scene-locus"], d["scene-floor"]), `${p} dark`).toBeGreaterThanOrEqual(3);
+    });
+  }
 });

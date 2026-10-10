@@ -43,6 +43,12 @@
   --meander: rgb(29 95 196 / 0.35);
   --shadow-card: 0 1px 2px rgb(11 27 51 / 0.05), 0 8px 24px -12px rgb(29 95 196 / 0.22);
   --shadow-card-hover: 0 2px 4px rgb(11 27 51 / 0.06), 0 16px 32px -14px rgb(29 95 196 / 0.32);
+  /* Typography + ornament per palette (Aegean: Cormorant headings, Greek key rule). */
+  --heading-font: var(--font-serif), "Cormorant Garamond", Georgia, serif;
+  --heading-adjust: 0.5;
+  --heading-tracking: -0.01em;
+  --rule-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M0 7.5H2V1H10V5.5H5V3.2H7.5M10 5.5V7.5H12' fill='none' stroke='black' stroke-width='1'/%3E%3C/svg%3E");
+  --rule-size: 12px 8px;
 
   /* 3D scene: zenith/horizon gradient dome, marble floor + walls, gold doors. */
   --scene-sky: #5a9fe6;
@@ -56,6 +62,11 @@
   --scene-locus-active: #e0a100;
   --scene-path: #1d5fc4;
   --scene-grid: #c4d4e8;
+  /* Scene lighting: key + fill + sky colours and an overall boost. */
+  --scene-key: #fff1d6;
+  --scene-fill: #dce9ff;
+  --scene-hemi: #f1f7ff;
+  --scene-boost: 1;
 }
 
 .dark {
@@ -117,6 +128,211 @@
   --scene-locus-active: #f2cf72;
   --scene-path: #8db4ff;
   --scene-grid: #1d2754;
+  /* Scene lighting: key + fill + sky colours and an overall boost. */
+  --scene-key: #dbe4ff;
+  --scene-fill: #9fb2ff;
+  --scene-hemi: #c9d5ff;
+  --scene-boost: 1;
+}
+
+
+/*
+ * Palettes (data-palette on <html>, orthogonal to light/dark). Same tokens,
+ * different worlds. Every pair is checked by lib/themeContrast.test.ts.
+ *   library: parchment, ink and brass by day; a candlelit study by night.
+ *   modern : crisp neutral greys with an indigo accent.
+ */
+[data-palette="library"]:not(.dark) {
+  --background: #f6f0e3;
+  --background-2: #ece2cc;
+  --foreground: #2a1f14;
+  --card: #fffaf0;
+  --card-foreground: #2a1f14;
+  --muted: #efe6d3;
+  --muted-foreground: #66553f;
+  --border: #ddcfb3;
+  --primary: #2f5d46;
+  --primary-hover: #244a37;
+  --primary-foreground: #ffffff;
+  --link: #2c5842;
+  --accent: #c4932f;
+  --accent-foreground: #1f1400;
+  --highlight: #7a4f00;
+  --destructive: #a12a1c;
+  --destructive-foreground: #ffffff;
+  --success: #2f6b3a;
+  --success-foreground: #ffffff;
+  --ring: #2f5d46;
+  --glow: radial-gradient(1000px 380px at 50% -10%, rgb(255 238 204 / 0.9), transparent 70%),
+    linear-gradient(180deg, #ecdcbb 0, #f6f0e3 440px);
+  --glow-size: auto;
+  --meander: rgb(42 31 20 / 0.45);
+  --shadow-card: 0 1px 2px rgb(42 31 20 / 0.06), 0 10px 24px -14px rgb(90 60 20 / 0.28);
+  --shadow-card-hover: 0 2px 4px rgb(42 31 20 / 0.08), 0 16px 32px -14px rgb(90 60 20 / 0.36);
+  --rule-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'%3E%3Cpath d='M0 2.5H8M0 5.5H8' stroke='black' stroke-width='0.8'/%3E%3C/svg%3E");
+  --rule-size: 8px 8px;
+  --scene-sky: #c9a676;
+  --scene-horizon: #f3e3c6;
+  --scene-fog: #f3e3c6;
+  --scene-floor: #cfae84;
+  --scene-wall: #efe4cf;
+  --scene-door: #9a6a1f;
+  --scene-archway: #2f5d46;
+  --scene-locus: #2f5d46;
+  --scene-locus-active: #c4932f;
+  --scene-path: #2f5d46;
+  --scene-grid: #d8c7a6;
+  /* Scene lighting: key + fill + sky colours and an overall boost. */
+  --scene-key: #ffe3b3;
+  --scene-fill: #ffefd2;
+  --scene-hemi: #fff4e2;
+  --scene-boost: 1;
+}
+
+[data-palette="library"].dark {
+  --background: #17110b;
+  --background-2: #1f170f;
+  --foreground: #f4ead6;
+  --card: #241a11;
+  --card-foreground: #f4ead6;
+  --muted: #2f2317;
+  --muted-foreground: #c9b79a;
+  --border: #3d2e1f;
+  --primary: #2f6b4d;
+  --primary-hover: #275c42;
+  --primary-foreground: #ffffff;
+  --link: #9fd3b5;
+  --accent: #e0b25a;
+  --accent-foreground: #1a1200;
+  --highlight: #e8c27a;
+  --destructive: #ff8a78;
+  --destructive-foreground: #17110b;
+  --success: #7fd6a0;
+  --success-foreground: #17110b;
+  --ring: #9fd3b5;
+  --glow: radial-gradient(900px 480px at 50% -10%, rgb(224 178 90 / 0.2), transparent 65%),
+    linear-gradient(180deg, #21170d 0, #17110b 520px);
+  --glow-size: auto;
+  --meander: rgb(224 178 90 / 0.45);
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.45), 0 8px 24px -12px rgb(0 0 0 / 0.65);
+  --shadow-card-hover: 0 2px 4px rgb(0 0 0 / 0.5), 0 16px 32px -14px rgb(224 178 90 / 0.28);
+  --rule-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'%3E%3Cpath d='M0 2.5H8M0 5.5H8' stroke='black' stroke-width='0.8'/%3E%3C/svg%3E");
+  --rule-size: 8px 8px;
+  --scene-sky: #0b0805;
+  --scene-horizon: #2a1c10;
+  --scene-fog: #2a1c10;
+  --scene-floor: #4a3320;
+  --scene-wall: #866848;
+  --scene-door: #e0b25a;
+  --scene-archway: #6fb08c;
+  --scene-locus: #9fd3b5;
+  --scene-locus-active: #e0b25a;
+  --scene-path: #9fd3b5;
+  --scene-grid: #3a2818;
+  /* Scene lighting: key + fill + sky colours and an overall boost. */
+  --scene-key: #ffc788;
+  --scene-fill: #e8a46a;
+  --scene-hemi: #ffd7a1;
+  --scene-boost: 1.4;
+}
+
+[data-palette="modern"]:not(.dark) {
+  --background: #f6f7f9;
+  --background-2: #eceff3;
+  --foreground: #111418;
+  --card: #ffffff;
+  --card-foreground: #111418;
+  --muted: #eef1f4;
+  --muted-foreground: #565f6b;
+  --border: #dde2e8;
+  --primary: #3b5bdb;
+  --primary-hover: #3049b8;
+  --primary-foreground: #ffffff;
+  --link: #3451c7;
+  --accent: #f59f00;
+  --accent-foreground: #1a1200;
+  --highlight: #8a5a00;
+  --destructive: #c92a2a;
+  --destructive-foreground: #ffffff;
+  --success: #237a35;
+  --success-foreground: #ffffff;
+  --ring: #3b5bdb;
+  --glow: linear-gradient(180deg, #eceff4 0, #f6f7f9 360px);
+  --glow-size: auto;
+  --meander: rgb(17 20 24 / 0.14);
+  --shadow-card: 0 1px 2px rgb(17 20 24 / 0.05), 0 8px 20px -12px rgb(17 20 24 / 0.16);
+  --shadow-card-hover: 0 2px 4px rgb(17 20 24 / 0.06), 0 14px 28px -14px rgb(17 20 24 / 0.22);
+  --heading-font: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+  --heading-adjust: none;
+  --heading-tracking: -0.025em;
+  --rule-mask: linear-gradient(#000, #000);
+  --rule-size: 100% 1px;
+  --scene-sky: #9cb8d6;
+  --scene-horizon: #eef2f6;
+  --scene-fog: #eef2f6;
+  --scene-floor: #d4d8de;
+  --scene-wall: #fbfbfc;
+  --scene-door: #2a2f36;
+  --scene-archway: #3b5bdb;
+  --scene-locus: #3b5bdb;
+  --scene-locus-active: #f59f00;
+  --scene-path: #3b5bdb;
+  --scene-grid: #d9dde2;
+  /* Scene lighting: key + fill + sky colours and an overall boost. */
+  --scene-key: #ffffff;
+  --scene-fill: #e9eef6;
+  --scene-hemi: #ffffff;
+  --scene-boost: 1;
+}
+
+[data-palette="modern"].dark {
+  --background: #0d0f12;
+  --background-2: #14171c;
+  --foreground: #eef0f3;
+  --card: #171a20;
+  --card-foreground: #eef0f3;
+  --muted: #20242b;
+  --muted-foreground: #a3abb7;
+  --border: #2b3038;
+  --primary: #3f5fe0;
+  --primary-hover: #3452c8;
+  --primary-foreground: #ffffff;
+  --link: #91a7ff;
+  --accent: #fcc419;
+  --accent-foreground: #1a1400;
+  --highlight: #fcc419;
+  --destructive: #ff8787;
+  --destructive-foreground: #0d0f12;
+  --success: #69db7c;
+  --success-foreground: #0d0f12;
+  --ring: #91a7ff;
+  --glow: radial-gradient(1200px 480px at 50% -20%, rgb(76 110 245 / 0.14), transparent 60%),
+    linear-gradient(180deg, #11141a 0, #0d0f12 480px);
+  --glow-size: auto;
+  --meander: rgb(238 240 243 / 0.12);
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.45), 0 8px 24px -12px rgb(0 0 0 / 0.6);
+  --shadow-card-hover: 0 2px 4px rgb(0 0 0 / 0.5), 0 16px 32px -14px rgb(76 110 245 / 0.3);
+  --heading-font: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+  --heading-adjust: none;
+  --heading-tracking: -0.025em;
+  --rule-mask: linear-gradient(#000, #000);
+  --rule-size: 100% 1px;
+  --scene-sky: #05070a;
+  --scene-horizon: #1a1f27;
+  --scene-fog: #1a1f27;
+  --scene-floor: #22262d;
+  --scene-wall: #464d58;
+  --scene-door: #c9ced6;
+  --scene-archway: #63e6be;
+  --scene-locus: #91a7ff;
+  --scene-locus-active: #fcc419;
+  --scene-path: #91a7ff;
+  --scene-grid: #22262d;
+  /* Scene lighting: key + fill + sky colours and an overall boost. */
+  --scene-key: #d2d9e6;
+  --scene-fill: #8392b3;
+  --scene-hemi: #bcc6d9;
+  --scene-boost: 1.15;
 }
 
 @theme inline {
@@ -142,7 +358,7 @@
   --color-ring: var(--ring);
   --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", monospace;
-  --font-display: var(--font-serif), "Cormorant Garamond", Georgia, serif;
+  --font-display: var(--heading-font);
   --shadow-card: var(--shadow-card);
   --shadow-card-hover: var(--shadow-card-hover);
   --radius-card: 1rem;
@@ -163,16 +379,23 @@ body {
 h1,
 h2,
 h3 {
-  font-family: var(--font-serif), "Cormorant Garamond", Georgia, serif;
+  font-family: var(--heading-font);
   font-weight: 700;
-  letter-spacing: -0.01em;
-  font-size-adjust: 0.5;
+  letter-spacing: var(--heading-tracking);
+  font-size-adjust: var(--heading-adjust);
   font-variant-numeric: lining-nums;
 }
 
 /* Cormorant defaults to old-style figures; stats and scores read better lining. */
 .font-display {
   font-variant-numeric: lining-nums;
+}
+
+/* Phones: the bottom tab bar (components/Navbar.tsx) never covers the end of a page. */
+@media (max-width: 639px) {
+  body:has(nav[aria-label="Main"]) {
+    padding-bottom: calc(4rem + env(safe-area-inset-bottom));
+  }
 }
 
 ::selection {
@@ -185,11 +408,11 @@ h3 {
 }
 
 @utility btn-primary {
-  @apply inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover disabled:pointer-events-none disabled:opacity-50;
+  @apply inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover disabled:pointer-events-none disabled:opacity-50 pointer-coarse:min-h-10;
 }
 
 @utility btn-outline {
-  @apply inline-flex items-center justify-center gap-2 rounded-xl border-2 border-border px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:border-primary hover:text-link disabled:pointer-events-none disabled:opacity-50;
+  @apply inline-flex items-center justify-center gap-2 rounded-xl border-2 border-border px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:border-primary hover:text-link disabled:pointer-events-none disabled:opacity-50 pointer-coarse:min-h-10;
 }
 
 @utility btn-ghost {
@@ -208,12 +431,13 @@ h3 {
   @apply rounded-2xl border border-border bg-card text-card-foreground shadow-card transition-shadow;
 }
 
-/* Greek key (meander) rule: a thin decorative band, coloured by --meander. */
+/* Decorative rule under the nav and big headings: the palette's ornament
+   (Greek key, library double line, modern hairline), coloured by --meander. */
 @utility meander-rule {
   height: 8px;
   background: var(--meander);
-  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M0 7.5H2V1H10V5.5H5V3.2H7.5M10 5.5V7.5H12' fill='none' stroke='black' stroke-width='1'/%3E%3C/svg%3E") repeat-x center / 12px 8px;
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M0 7.5H2V1H10V5.5H5V3.2H7.5M10 5.5V7.5H12' fill='none' stroke='black' stroke-width='1'/%3E%3C/svg%3E") repeat-x center / 12px 8px;
+  -webkit-mask: var(--rule-mask) repeat-x center / var(--rule-size);
+  mask: var(--rule-mask) repeat-x center / var(--rule-size);
 }
 
 /* Onboarding spotlight: ringed by the guided tour overlay. */

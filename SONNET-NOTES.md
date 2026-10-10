@@ -77,6 +77,36 @@ Bugs found and fixed:
 Still unverified: a real phone (touch is emulated via CDP) and the browser's
 own Print dialog (the PDF comes from the same print-media rendering).
 
+## Palace studio + redesign (2026-10-10, Phases K and L)
+
+The user unlocked the design decisions (palette, fonts, navigation, page
+structure, libraries) and approved the redesign plan; brief chosen in their
+absence: calm / scholarly / cinematic / a little playful, for students and
+self-learners, desktop-first with solid phone support.
+
+- Studio (K): select a room in 3D (camera glides to it) -> rename, recolour,
+  ceiling height, furnish (place, drag, R rotate, Del remove, recolour).
+  Size/position stay on the 2D blueprint (it reconciles overlaps and linked
+  doors). Furniture validated server-side against the final room size.
+- Bug fixed: the 2D grid editor remounted from the first fetch after a tab
+  switch and dropped edits made in the session.
+- Palettes (L): Aegean (default), Library (parchment/ink/brass; candlelit at
+  night), Modern (neutral/indigo). Picker in the nav's Appearance menu and on
+  Profile; pre-paint script applies it with no flash. Lights are tokens too
+  (`--scene-key/-fill/-hemi/-boost`).
+- Navigation: Home / Practice / Palaces / Decks with icons, account menu,
+  phone tab bar (hidden in walk mode). Profile leads with progress.
+- Practice (`/practice`) and Home "Continue" lead with walking the due loci;
+  2D quick review is the secondary action.
+- Rooms colour their screens (editor, walk, palace tour, and per-card in
+  study) via `useRoomAccent` -> `accentFor` (AA for all swatches x palettes).
+- Walk motion: fly-in from the plan view (skipped for reduced motion / door
+  arrivals), door leaves swing open within 2.6 m, arrival pulse + pentatonic
+  chime (mute toggle, `mp-sound`). Bloom + vignette + baked contact shadows.
+  Adaptive quality: touch devices cap DPR 1.5, no MSAA; PerformanceMonitor
+  steps down further. iGPU phone viewport went 46 -> 60 fps with this.
+- Tour viewpoints avoid furniture (height-aware line of sight).
+
 ## Experience pass (2026-10-09, Phase J)
 
 Goal: make the core loop feel like the product in CONCEPT.md, judged by

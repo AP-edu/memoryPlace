@@ -1,5 +1,6 @@
 import { clamp01, locusWorldPos, openingHalfFraction, wallLength } from "./geometry";
 import type { Locus, Opening, Room, WallFace } from "@/types/database";
+import { circleHitsRect, type Rect } from "./furniture";
 
 // First-person walk logic (Phase F). All pure functions — no DOM, no three —
 // so movement, collision, and focus rules are verifiable without a browser.
@@ -132,10 +133,15 @@ export function stepPlayer(
   dt: number,
   room: RoomSize,
   openings: Opening[],
-  opts?: { speed?: number; radius?: number }
+  opts?: { speed?: number; radius?: number; obstacles?: Rect[] }
 ): Pose {
   const speed = opts?.speed ?? WALK_SPEED;
   const r = opts?.radius ?? PLAYER_RADIUS;
+  const blocks = opts?.obstacles ?? [];
+  // Furniture blocks a move unless you were already overlapping it (so you can
+  // always walk out of a piece you spawned in).
+  const blocked = (fromX: number, fromZ: number, toX: number, toZ: number) =>
+    blocks.some((b) => circleHitsRect(toX, toZ, r, b) && !circleHitsRect(fromX, fromZ, r, b));
   const step = Math.min(Math.max(dt, 0), 0.05) * speed;
   const fx = Math.sin(pose.yaw);
   const fz = Math.cos(pose.yaw);
@@ -152,12 +158,16 @@ export function stepPlayer(
     if (!openingAt(room, "east", clamp01(pose.z / room.depth), openings, r)) nx = room.width - r;
   }
 
+  if (blocked(pose.x, pose.z, nx, pose.z)) nx = pose.x;
+
   let nz = pose.z + dz;
   if (nz < r && pose.z >= r) {
     if (!openingAt(room, "south", clamp01(nx / room.width), openings, r)) nz = r;
   } else if (nz > room.depth - r && pose.z <= room.depth - r) {
     if (!openingAt(room, "north", clamp01(nx / room.width), openings, r)) nz = room.depth - r;
   }
+
+  if (blocked(nx, pose.z, nx, nz)) nz = pose.z;
 
   nx = Math.min(room.width + OUTSIDE_MARGIN, Math.max(-OUTSIDE_MARGIN, nx));
   nz = Math.min(room.depth + OUTSIDE_MARGIN, Math.max(-OUTSIDE_MARGIN, nz));

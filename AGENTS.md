@@ -51,6 +51,18 @@ Order of delivery from the vision docs; each phase ends green on tsc + eslint +
   blueprint thumbnails on palace cards (`groundPlan`), landing page with a
   walking demo palace (`lib/demoPalace.ts`), OAuth buttons only when
   configured. DONE (PC livecheck 34/34, 2026-10-09).
+- K. Palace studio: the 3D tab rebuilds real places — rename/recolour/ceiling
+  per room and furniture (17 low-poly pieces, `lib/furniture.ts`, stored in
+  `rooms.metadata.furniture`, solid pieces block walking, footprints on every
+  plan). DONE (livecheck 36/36, 2026-10-10).
+- L. Redesign (user-approved, unlocks the Phase H "no third theme" call):
+  three palettes x light/dark (Aegean, Library, Modern) on the same tokens,
+  palette-driven 3D lighting, icon nav + phone tab bar, Practice hub
+  (`/practice`: walk due loci first, 2D quick review as fallback), room
+  colour as the screen accent (`lib/color.ts`, AA-checked), fly-in camera,
+  doors that open, arrival chime + pulse, bloom/vignette/contact shadows with
+  adaptive quality, furniture-aware tour viewpoints. DONE (livecheck 39/39,
+  60 fps on RTX 5050 and the iGPU incl. phone, 2026-10-10).
 
 ## Geometry convention (Phase A, source of truth for B/F)
 
@@ -95,7 +107,14 @@ artifacts in `.livecheck/`). Add checks there when a phase adds UI.
 - TypeScript throughout
 - Tailwind CSS 4
 - next-auth v4 + Supabase (`@supabase/supabase-js`)
-- vitest for tests
+- vitest for tests; Playwright (`npm run livecheck`) for the real-GPU verdict
+- lucide-react icons; `@react-three/postprocessing` (bloom/vignette, WebGL2
+  only, adaptive via drei `PerformanceMonitor`)
+- Design system: every colour (UI + 3D scene + lights) is a token in
+  `app/globals.css`, per palette (`data-palette` on <html>) and mode
+  (`.dark`). `lib/themeContrast.test.ts` enforces WCAG AA for every
+  palette/mode pair — add a palette there, never a one-off colour in a
+  component. Room accents go through `lib/color.ts` (`accentFor`).
 - 3D convention: pure logic in `lib/` (see `lib/walk.ts`), R3F scenes kept
   separate — never mix scene code into geometry/logic modules
 

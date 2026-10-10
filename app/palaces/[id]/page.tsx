@@ -12,8 +12,8 @@ import { PageSkeleton } from "@/components/ui/Skeleton";
 import { roomProgress } from "@/lib/srs";
 import type { ReviewPayload } from "@/lib/reviewTypes";
 
-// three.js is client-only and heavy: load the 3D palace tab on demand.
-const Palace3DView = dynamic(() => import("@/components/palace/Palace3DView"), {
+// The 3D studio (three.js inside) loads on demand when its tab opens.
+const PalaceStudio = dynamic(() => import("@/components/palace/PalaceStudio"), {
   ssr: false,
   loading: () => <div className="h-[560px] animate-pulse rounded-lg border border-border bg-card" />,
 });
@@ -179,7 +179,7 @@ export default function PalacePage() {
               view === v ? "border-primary font-semibold text-link" : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
-            {v === "2d" ? "2D Blueprint" : "3D Palace"}
+            {v === "2d" ? "2D Blueprint" : "3D Studio"}
           </button>
         ))}
         {view === "3d" && sortedLevels.length > 1 && (
@@ -204,16 +204,18 @@ export default function PalacePage() {
       <p className="mb-3 text-xs text-muted-foreground">
         {view === "2d"
           ? "Draw rooms on the grid (metres, north up), stack levels, and put doors on shared walls. Open a room to place loci and cards."
-          : "Orbit with the mouse. Click a room to select it."}
+          : "Your palace in 3D. Click a room to redesign it: rename, recolour, raise the ceiling and furnish it like the real place. Drag to orbit."}
       </p>
 
       {ready ? (
         view === "2d" ? (
           <GridEditor
             palace={palace}
-            initialLevels={levels}
-            initialRooms={rooms}
-            initialOpenings={openings}
+            // Remounts (tab switches) start from the live state, not the first
+            // fetch, so edits made this session (in 2D or the 3D studio) stay.
+            initialLevels={liveLevels.length ? liveLevels : levels}
+            initialRooms={liveRooms.length ? liveRooms.filter((r) => !r.id.startsWith("tmp-")) : rooms}
+            initialOpenings={liveRooms.length ? liveOpenings.filter((o) => !o.id.startsWith("tmp-")) : openings}
             backend={httpBackend}
             onRoomsChange={onRoomsChange}
             onPreviewRoom={setPreviewRoomId}
@@ -223,14 +225,16 @@ export default function PalacePage() {
             onActiveLevelChange={setEditorLevelId}
           />
         ) : (
-          <Palace3DView
+          <PalaceStudio
             rooms={liveRooms}
             openings={liveOpenings}
+            loci={palaceLoci ?? []}
             levelId={activeLevelId}
             fallbackLevelId={firstLiveLevelId}
-            selectedId={highlightedRoomId}
-            onSelect={setHighlightedRoomId}
-            loci={palaceLoci ?? []}
+            selectedRoomId={highlightedRoomId}
+            onSelectRoom={setHighlightedRoomId}
+            onRoomSaved={(saved) => setLiveRooms((rs) => rs.map((r) => (r.id === saved.id ? saved : r)))}
+            onOpenBlueprint={() => setView("2d")}
           />
         )
       ) : (

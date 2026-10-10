@@ -178,3 +178,16 @@ describe("groundPlan", () => {
     expect(groundPlan([], [], [], [])).toBeNull();
   });
 });
+
+describe("furniture on the plan", () => {
+  it("draws each piece's footprint inside its room, north up", () => {
+    const r = room({ id: "a", metadata: { furniture: [{ id: "s", kind: "sofa", x: 5, z: 7, rot: 0 }] } } as Partial<Room> & { id: string });
+    const bp = layoutBlueprint([r], [], [], new Map())!;
+    const f = bp.furniture[0];
+    expect(f).toMatchObject({ roomId: "a", kind: "sofa", w: 2, h: 0.9 });
+    const rr = bp.rooms[0];
+    expect(f.x).toBeGreaterThanOrEqual(rr.x);
+    expect(f.y).toBeGreaterThanOrEqual(rr.y);
+    expect(f.y).toBeLessThan(rr.y + 1.5); // near the north (top) wall
+  });
+});

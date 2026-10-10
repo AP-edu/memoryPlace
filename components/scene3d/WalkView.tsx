@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { Canvas, useFrame, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
@@ -48,6 +48,12 @@ import { buildChoices } from "@/lib/quiz";
 import type { SessionAnswer } from "@/lib/reviewTypes";
 import type { Blueprint } from "@/lib/blueprint";
 import MiniMap, { type MiniMapPose } from "./MiniMap";
+import { blockers, furnitureOf, obstacles } from "@/lib/furniture";
+import { readSoundOn, setSoundOn, subscribeSound } from "@/lib/sound";
+import { playChime } from "./chime";
+import { FloorShadows, SceneFX } from "./SceneFX";
+import { PerformanceMonitor } from "@react-three/drei";
+import { Volume2, VolumeX } from "lucide-react";
 
 // First-person walk mode + guided tour. Movement/collision/focus/tour maths
 // live in lib/walk.ts and lib/scene3d.ts (pure, unit-tested); this file is
@@ -60,7 +66,13 @@ interface Glide {
   from: Pose;
   to: Pose;
   t: number;
+  /** Set when the glide ends at a locus (drives the arrival beat). */
+  locusId?: string;
 }
+
+/** Fly-in: seconds from the bird's-eye plan view down to eye level. */
+const INTRO_S = 1.7;
+const INTRO_PITCH = -1.45;
 
 function PlayerRig({
   room,
@@ -72,6 +84,8 @@ function PlayerRig({
   lookRef,
   glideRef,
   frozen,
+  introRef,
+  onArrive,
   onFocus,
   onExit,
   onNearDoor,
@@ -85,11 +99,16 @@ function PlayerRig({
   lookRef: React.MutableRefObject<{ yawDelta: number; pitchDelta: number }>;
   glideRef: React.MutableRefObject<Glide | null>;
   frozen: boolean;
+  /** Fly-in progress 0..1 (1 = done / skipped). */
+  introRef: React.MutableRefObject<number>;
+  onArrive?: (locusId: string) => void;
   onFocus: (id: string | null) => void;
   onExit: (o: Opening) => void;
   onNearDoor: (o: Opening | null) => void;
 }) {
   const size = { width: room.width, depth: room.depth };
+  // Solid furniture blocks walking (rugs don't).
+  const blocks = useMemo(() => obstacles(furnitureOf(room)), [room]);
   const lastFocus = useRef<string | null>(null);
   const lastNear = useRef<string | null>(null);
   const exited = useRef(false);
@@ -99,7 +118,10 @@ function PlayerRig({
     if (glide) {
       glide.t = Math.min(1, glide.t + delta / GLIDE_S);
       pose = lerpPose(glide.from, glide.to, easeInOut(glide.t));
-      if (glide.t >= 1) glideRef.current = null;
+      if (glide.t >= 1) {
+        glideRef.current = null;
+        if (glide.locusId) onArrive?.(glide.locusId);
+      }
     } else {
       pose = {
         ...pose,
@@ -113,18 +135,29 @@ function PlayerRig({
           throttle: Math.max(-1, Math.min(1, k.throttle + j.throttle)),
           strafe: Math.max(-1, Math.min(1, k.strafe + j.strafe)),
         };
-        pose = stepPlayer(pose, input, delta, size, openings, { speed: WALK_SPEED, radius: PLAYER_RADIUS });
+        pose = stepPlayer(pose, input, delta, size, openings, { speed: WALK_SPEED, radius: PLAYER_RADIUS, obstacles: blocks });
       }
     }
     lookRef.current.yawDelta = 0;
     lookRef.current.pitchDelta = 0;
     poseRef.current = pose;
 
-    const f = forwardVec(pose.yaw, pose.pitch);
-    camera.position.set(...toScene({ x: pose.x, y: EYE_HEIGHT, z: pose.z }));
-    camera.lookAt(...toScene({ x: pose.x + f.x, y: EYE_HEIGHT + f.y, z: pose.z + f.z }));
+    // Fly-in: start above the room looking down at its plan, then descend to
+    // eye level while tilting up (the blueprint becomes the place).
+    let camY = EYE_HEIGHT;
+    let pitch = pose.pitch;
+    const flying = introRef.current < 1;
+    if (flying) {
+      introRef.current = Math.min(1, introRef.current + delta / INTRO_S);
+      const e = easeInOut(introRef.current);
+      camY = EYE_HEIGHT + (1 - e) * (Math.max(room.width, room.depth) * 1.15 + 3);
+      pitch = INTRO_PITCH + (pose.pitch - INTRO_PITCH) * e;
+    }
+    const f = forwardVec(pose.yaw, pitch);
+    camera.position.set(...toScene({ x: pose.x, y: camY, z: pose.z }));
+    camera.lookAt(...toScene({ x: pose.x + f.x, y: camY + f.y, z: pose.z + f.z }));
 
-    if (!frozen) {
+    if (!frozen && !flying) {
       const hit = focusLocus({ x: pose.x, y: EYE_HEIGHT, z: pose.z, yaw: pose.yaw, pitch: pose.pitch }, items);
       const id = hit ? hit.locus.id : null;
       if (id !== lastFocus.current) {
@@ -351,6 +384,8 @@ export interface WalkViewProps {
   actions?: React.ReactNode;
   /** Start the guided tour immediately. */
   autoTour?: boolean;
+  /** Fly down into the room on arrival (skipped for reduced motion). */
+  intro?: boolean;
   /**
    * Due-first card order (card ids, e.g. from
    * `sortPlayQueue(items, "due", now)`). When provided the tour offers a
@@ -375,12 +410,40 @@ export default function WalkView({
   onGoRoom,
   actions,
   autoTour = false,
+  intro = false,
   cardOrder,
   className = "h-dvh",
 }: WalkViewProps) {
   const colors = useSceneColors();
   // Look slightly down (Street-View style) so the floor chevrons are in view.
   const poseRef = useRef<Pose>({ ...(spawn ?? spawnPose(room)), pitch: NAV_PITCH });
+  // Arrival beat: the plaque pulses and (unless muted) a soft chime plays,
+  // pitched by the locus's place in the study order.
+  const [pulse, setPulse] = useState<{ id: string; at: number } | null>(null);
+  const sound = useSyncExternalStore(subscribeSound, readSoundOn, () => true);
+  const soundRef = useRef(sound);
+  useEffect(() => {
+    soundRef.current = sound;
+  }, [sound]);
+  const orderIndex = useMemo(() => new Map(tourOrder(loci).map((l, i) => [l.id, i])), [loci]);
+  const arrive = useCallback(
+    (locusId: string) => {
+      setPulse({ id: locusId, at: performance.now() });
+      if (soundRef.current) playChime(orderIndex.get(locusId) ?? 0);
+    },
+    [orderIndex]
+  );
+  const toggleSound = () => setSoundOn(!sound);
+  // Render quality: touch devices start leaner (phone pixel densities are
+  // expensive); the PerformanceMonitor in the canvas steps down further.
+  const coarse = useMemo(() => typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches, []);
+  const [dpr, setDpr] = useState<number | [number, number]>(() => [1, coarse ? 1.5 : 2]);
+  const [fx, setFx] = useState(true);
+  // Furniture the tour camera must not stand in or look through.
+  const sight = useMemo(() => blockers(furnitureOf(room), room.height), [room]);
+  const introRef = useRef(
+    intro && !(typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) ? 0 : 1
+  );
   const inputRef = useRef<MoveInput>({ throttle: 0, strafe: 0 });
   const joyRef = useRef<MoveInput>({ throttle: 0, strafe: 0 });
   const lookRef = useRef({ yawDelta: 0, pitchDelta: 0 });
@@ -428,9 +491,9 @@ export default function WalkView({
         return;
       }
       setNavIndex(i);
-      glideRef.current = { from: { ...poseRef.current }, to: stopPose(st, room), t: 0 };
+      glideRef.current = { from: { ...poseRef.current }, to: stopPose(st, room, sight), t: 0, locusId: st.kind === "locus" ? st.locus.id : undefined };
     },
-    [nav, navIndex, room, onExitDoor]
+    [nav, navIndex, room, onExitDoor, sight]
   );
   const stepNav = useCallback(
     (dir: 1 | -1) => {
@@ -485,10 +548,10 @@ export default function WalkView({
       if (!s) return;
       // Stand back a little and look slightly below the marker so it sits in
       // the upper half of the view, clear of the card panel.
-      const to = viewPoseForLocus(s.locus, room, 2.6);
-      glideRef.current = { from: { ...poseRef.current }, to: { ...to, pitch: to.pitch - 0.22 }, t: 0 };
+      const to = viewPoseForLocus(s.locus, room, 2.6, 0.6, sight);
+      glideRef.current = { from: { ...poseRef.current }, to: { ...to, pitch: to.pitch - 0.22 }, t: 0, locusId: s.locus.id };
     },
-    [room]
+    [room, sight]
   );
 
   const startTour = useCallback(() => {
@@ -673,6 +736,7 @@ export default function WalkView({
     if (!window.location.search.includes("debug")) return;
     (window as unknown as { __walk: unknown }).__walk = {
       pose: () => poseRef.current,
+      introDone: () => introRef.current >= 1,
       focused: () => focusedId,
       teleport: (x: number, z: number, yaw = 0, pitch = 0) => {
         poseRef.current = { x, z, yaw, pitch };
@@ -763,15 +827,24 @@ export default function WalkView({
       >
         <SceneGate title="Walk mode couldn't start" backHref={`/palaces/${room.palace_id}`} backLabel="Back to palace blueprint">
           <Canvas
-            dpr={[1, 2]}
+            dpr={dpr}
             gl={{ antialias: true, powerPreference: "high-performance", failIfMajorPerformanceCaveat: false }}
             camera={{ fov: 62, near: 0.05, far: 120 }}
           >
+          {/* Adaptive quality: drop resolution, then the post effects, if frames sag. */}
+          <PerformanceMonitor
+            onDecline={() => setDpr(1)}
+            onFallback={() => {
+              setDpr(1);
+              setFx(false);
+            }}
+          />
           <color attach="background" args={[colors.horizon]} />
           <fog attach="fog" args={[colors.fog, 12, 40]} />
           <SceneSky colors={colors} radius={100} />
           <SceneLights colors={colors} />
-          <RoomShell room={room} openings={openings} colors={colors} />
+          <RoomShell room={room} openings={openings} colors={colors} animateDoors />
+          <FloorShadows width={room.width} depth={room.depth} />
           <LocusMarkers
             room={room}
             loci={loci}
@@ -780,6 +853,7 @@ export default function WalkView({
             showPath={!!tour}
             labelFade={6}
             results={lociResults}
+            pulse={pulse}
             onMarkerClick={(locus, e) => {
               if (e.delta > 4) return; // end of a look-around drag
               e.stopPropagation();
@@ -798,17 +872,32 @@ export default function WalkView({
             lookRef={lookRef}
             glideRef={glideRef}
             frozen={!!tour}
+            introRef={introRef}
+            onArrive={arrive}
             onFocus={handleFocus}
             onExit={(o) => onExitDoor?.(o)}
             onNearDoor={setNearDoor}
           />
+          {fx && <SceneFX lite={coarse} />}
           </Canvas>
         </SceneGate>
       </div>
 
       <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-wrap items-start justify-between gap-2 p-4">
         <div className="card-base pointer-events-auto max-w-[min(26rem,100%)] px-3 py-2 max-sm:py-1.5">
-          <p className="text-sm font-semibold">{room.title}</p>
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm font-semibold">{room.title}</p>
+            <button
+              type="button"
+              onClick={toggleSound}
+              aria-pressed={sound}
+              aria-label={sound ? "Mute arrival chimes" : "Play arrival chimes"}
+              title={sound ? "Mute arrival chimes" : "Play arrival chimes"}
+              className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              {sound ? <Volume2 className="h-3.5 w-3.5" aria-hidden /> : <VolumeX className="h-3.5 w-3.5" aria-hidden />}
+            </button>
+          </div>
           <p className="text-xs text-muted-foreground">
             {tour ? (
               `Tour · stop ${tour.index + 1} of ${stops.length}`

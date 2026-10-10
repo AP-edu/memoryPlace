@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useFetch } from "@/hooks/useFetch";
-import ThemeToggle from "@/components/ThemeToggle";
+import AppearancePicker from "@/components/AppearancePicker";
 import { isValidEmail, MIN_PASSWORD_LENGTH, normalizeEmail } from "@/lib/email";
 import type { HomeSummary } from "@/lib/homeSummary";
 import { PageSkeleton } from "@/components/ui/Skeleton";
@@ -206,82 +206,56 @@ export default function ProfilePage() {
     ? [...summary.palaces].sort((a, b) => b.due - a.due || b.cards - a.cards)[0] ?? null
     : null;
 
+  const stat = (value: string | number, label: string) => (
+    <div className="card-base p-4 text-center">
+      <p className="font-display text-2xl font-semibold">{value}</p>
+      <p className="text-sm text-muted-foreground">{label}</p>
+    </div>
+  );
+
   return (
     <div className="mx-auto max-w-3xl p-4 sm:p-6">
-      <h1 className="mb-5 text-3xl font-semibold">Profile</h1>
-
-      <div className="card-base mb-6 flex items-center justify-between p-6">
-        <div>
-          <p className="font-display text-xl font-medium">{session.user.name}</p>
-          <p className="text-sm text-muted-foreground">{session.user.email}</p>
-        </div>
-        <span
-          className={`rounded-full px-3 py-1 text-xs font-medium ${
-            session.user.role === "admin"
-              ? "bg-accent/15 text-highlight"
-              : "bg-muted text-muted-foreground"
-          }`}
-        >
-          {session.user.role === "admin" ? "Admin" : "User"}
+      <div className="mb-6 flex items-center gap-4">
+        <span aria-hidden className="grid h-14 w-14 place-items-center rounded-full bg-accent text-2xl font-bold text-accent-foreground">
+          {(session.user.name ?? "?").trim().charAt(0).toUpperCase()}
         </span>
+        <div className="min-w-0">
+          <h1 className="truncate text-3xl font-semibold">{session.user.name}</h1>
+          <p className="truncate text-sm text-muted-foreground">
+            {session.user.email}
+            {session.user.role === "admin" ? " · Admin" : ""}
+          </p>
+        </div>
       </div>
 
+      <h2 className="mb-3 text-xl font-semibold">Your progress</h2>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+        {stat(summary ? summary.palaces.length : "–", "Palaces")}
+        {stat(summary ? summary.totalCards : "–", "Cards")}
+        {stat(summary ? summary.dueToday : "–", "Due today")}
+        {stat(summary ? (summary.avgScore === null ? "–" : `${Math.round(summary.avgScore * 100)}%`) : "–", "Recall")}
+        {stat(summary ? summary.streakDays : "–", "Day streak")}
+      </div>
+      {((cont && cont.due > 0) || (weakest && weakest.due > 0)) && (
+        <Link href="/practice" className="card-base mt-3 flex items-center justify-between gap-3 p-4 hover:shadow-card-hover">
+          <span className="text-sm">
+            {(cont?.due ?? 0) + (weakest && weakest.palaceId !== cont?.palaceId ? weakest.due : 0)} cards are waiting at their loci.
+          </span>
+          <span className="text-sm font-semibold text-link">Practice →</span>
+        </Link>
+      )}
+
+      <h2 className="mb-3 mt-8 text-xl font-semibold">Appearance</h2>
+      <div className="card-base p-4">
+        <AppearancePicker />
+      </div>
+
+      <h2 className="mb-0 mt-8 text-xl font-semibold">Account</h2>
       {profile && (
         // key remounts the form when saved values change so its fields resync.
         <AccountForm key={`${profile.name}|${profile.email}`} profile={profile} onSaved={refetchProfile} />
       )}
       {profile?.has_password && <PasswordForm />}
-
-      <div className="card-base mt-6 flex items-center justify-between gap-3 p-4">
-        <div>
-          <h2 className="text-lg font-semibold">Appearance</h2>
-          <p className="text-sm text-muted-foreground">Blue sky by day, starry night after dark — or follow your device.</p>
-        </div>
-        <ThemeToggle />
-      </div>
-
-      <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <div className="card-base p-4 text-center">
-          <p className="font-display text-2xl font-semibold">{summary ? summary.palaces.length : "–"}</p>
-          <p className="text-sm text-muted-foreground">Palaces</p>
-        </div>
-        <div className="card-base p-4 text-center">
-          <p className="font-display text-2xl font-semibold">{summary ? summary.totalCards : "–"}</p>
-          <p className="text-sm text-muted-foreground">Cards</p>
-        </div>
-        <div className="card-base p-4 text-center">
-          <p className="font-display text-2xl font-semibold">{summary ? summary.dueToday : "–"}</p>
-          <p className="text-sm text-muted-foreground">Due today</p>
-        </div>
-        <div className="card-base p-4 text-center">
-          <p className="font-display text-2xl font-semibold text-link">
-            {summary ? (summary.avgScore === null ? "–" : `${Math.round(summary.avgScore * 100)}%`) : "–"}
-          </p>
-          <p className="text-sm text-muted-foreground">Avg score</p>
-        </div>
-      </div>
-
-      <div className="card-base mt-6 p-4">
-        <p className="mb-1 text-sm text-muted-foreground">Day streak</p>
-        <p className="font-display text-lg font-medium">
-          {summary ? `${summary.streakDays} day${summary.streakDays === 1 ? "" : "s"}` : "–"}
-        </p>
-      </div>
-
-      {cont && (
-        <div className="card-base mt-6 flex items-center justify-between p-4">
-          <div>
-            <p className="mb-1 text-sm text-muted-foreground">Continue</p>
-            <p className="font-display text-lg font-medium">{cont.title}</p>
-            <p className="text-sm text-muted-foreground">
-              {cont.reviewed} of {cont.total} reviewed{cont.due > 0 ? ` · ${cont.due} due` : ""}
-            </p>
-          </div>
-          <Link href={`/study/palace/${cont.palaceId}`} className="btn-primary">
-            Study now →
-          </Link>
-        </div>
-      )}
 
       <div className="card-base mt-6 flex items-center justify-between p-4">
         <div>
@@ -294,19 +268,6 @@ export default function ProfilePage() {
           Replay tour
         </button>
       </div>
-
-      {weakest && weakest.due > 0 && (!cont || weakest.palaceId !== cont.palaceId) && (
-        <div className="card-base mt-6 flex items-center justify-between p-4">
-          <div>
-            <p className="mb-1 text-sm text-muted-foreground">Needs reinforcement</p>
-            <p className="font-display text-lg font-medium">{weakest.title}</p>
-            <p className="text-sm text-muted-foreground">{weakest.due} due</p>
-          </div>
-          <Link href={`/study/palace/${weakest.palaceId}`} className="btn-outline">
-            Review →
-          </Link>
-        </div>
-      )}
     </div>
   );
 }

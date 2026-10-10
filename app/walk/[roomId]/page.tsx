@@ -10,6 +10,7 @@ import { returnDoor, spawnAtDoor } from "@/lib/scene3d";
 import { sortPlayQueue, type QueueItem } from "@/lib/srs";
 import WalkView from "@/components/scene3d/WalkView";
 import type { SessionAnswer } from "@/lib/reviewTypes";
+import { useRoomAccent } from "@/hooks/useRoomAccent";
 
 // First-person walk mode + guided tour. Rendering lives in
 // components/scene3d/WalkView (shared with /dev/room-3d).
@@ -39,6 +40,7 @@ export default function WalkPage() {
   const tourParam = useSearchParam("tour") === "1";
 
   const levelPlan = useLevelPlan(room?.palace_id, room?.id);
+  const accent = useRoomAccent(room?.background);
 
   const roomTitles = useMemo(() => Object.fromEntries((siblings ?? []).map((r) => [r.id, r.title])), [siblings]);
   const spawn = useMemo(() => {
@@ -101,6 +103,8 @@ export default function WalkPage() {
   }
 
   return (
+    // The room's colour is the screen accent (buttons, links) while you're in it.
+    <div className="contents" style={accent}>
     <WalkView
       // Remount per room, and once more if the return-door spawn resolves late.
       key={`${room.id}:${spawn ? "door" : "centre"}`}
@@ -115,6 +119,7 @@ export default function WalkPage() {
       onTourComplete={onTourComplete}
       levelPlan={levelPlan}
       onGoRoom={(id) => router.push(`/walk/${id}?from=${room.id}`)}
+      intro={!fromId}
       autoTour={tourParam}
       cardOrder={cardOrder}
       className="h-[calc(100dvh-3.5rem)]"
@@ -131,5 +136,6 @@ export default function WalkPage() {
         </>
       }
     />
+    </div>
   );
 }

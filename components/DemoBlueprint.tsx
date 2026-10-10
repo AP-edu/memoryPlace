@@ -34,6 +34,9 @@ export default function DemoBlueprint({ className = "" }: { className?: string }
           </text>
         </g>
       ))}
+      {plan.furniture.map((f, i) => (
+        <rect key={`f${i}`} x={f.x} y={f.y} width={f.w} height={f.h} rx={0.1} className="fill-foreground/15" />
+      ))}
       {plan.openings.map((o, i) => (
         <line key={i} x1={o.x1} y1={o.y1} x2={o.x2} y2={o.y2} strokeWidth={0.3} className="stroke-accent" />
       ))}

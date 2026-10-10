@@ -20,6 +20,12 @@ export interface SceneColors {
   locusActive: string;
   path: string;
   grid: string;
+  /** Lighting: key (sun/moon/candle), fill and sky (hemisphere) colours. */
+  key: string;
+  fill: string;
+  hemi: string;
+  /** Overall light multiplier (a candlelit study needs more than moonlight). */
+  boost: string;
 }
 
 const VARS: Record<Exclude<keyof SceneColors, "night">, string> = {
@@ -34,6 +40,10 @@ const VARS: Record<Exclude<keyof SceneColors, "night">, string> = {
   locusActive: "--scene-locus-active",
   path: "--scene-path",
   grid: "--scene-grid",
+  key: "--scene-key",
+  fill: "--scene-fill",
+  hemi: "--scene-hemi",
+  boost: "--scene-boost",
 };
 
 // SSR / pre-hydration fallback = the dark (starry night) values in globals.css.
@@ -50,6 +60,10 @@ export const DEFAULT_SCENE_COLORS: SceneColors = {
   locusActive: "#f2cf72",
   path: "#8db4ff",
   grid: "#1d2754",
+  key: "#dbe4ff",
+  fill: "#9fb2ff",
+  hemi: "#c9d5ff",
+  boost: "1",
 };
 
 let cacheKey = "";
@@ -73,7 +87,7 @@ function read(): SceneColors {
 
 function subscribe(cb: () => void): () => void {
   const mo = new MutationObserver(cb);
-  mo.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "data-theme", "style"] });
+  mo.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "data-theme", "data-palette", "style"] });
   const mq = window.matchMedia("(prefers-color-scheme: dark)");
   mq.addEventListener("change", cb);
   return () => {

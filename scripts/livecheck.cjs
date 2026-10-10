@@ -447,10 +447,10 @@ async function cleanup(userIds) {
       await page.getByText(/\d+\/\d+ learned/).first().waitFor({ timeout: 10000 });
     });
 
-    await check("palace 3D: renders; clicking a room floor -> + Add loci -> place mode", async () => {
+    await check("studio: renders; clicking a room floor opens it in the studio -> Place loci -> place mode", async () => {
       await page.goto(`${BASE}/palaces/${ids.palace}`);
       await page.waitForLoadState("networkidle");
-      await page.getByRole("tab", { name: "3D Palace" }).click();
+      await page.getByRole("tab", { name: "3D Studio" }).click();
       const canvas = page.locator("canvas").first();
       await canvas.waitFor({ timeout: 20000 });
       await sleep(2500); // dynamic import + shader compile
@@ -460,21 +460,81 @@ async function cleanup(userIds) {
       let selected = false;
       for (const [fx, fy] of [[0.5, 0.6], [0.5, 0.7], [0.45, 0.65], [0.55, 0.55]]) {
         await page.mouse.click(box.x + box.width * fx, box.y + box.height * fy);
-        await sleep(250);
-        if (await page.locator("a", { hasText: "+ Add loci" }).first().isVisible().catch(() => false)) {
+        await sleep(300);
+        if (await page.locator("#studio-title").isVisible().catch(() => false)) {
           selected = true;
           break;
         }
       }
-      await shot(page, "palace-3d");
-      assert(selected, "no room selected by clicking its floor");
-      const link = page.locator("a", { hasText: "+ Add loci" }).first();
-      assert(/\/rooms\/.+\?tool=place/.test(await link.getAttribute("href")), "bad + Add loci href");
+      await shot(page, "studio");
+      assert(selected, "clicking a room floor did not open it in the studio");
+      const link = page.getByRole("link", { name: "Place loci" });
+      assert(/\/rooms\/.+\?tool=place/.test(await link.getAttribute("href")), "bad Place loci href");
       await link.click();
       await page.waitForURL(/\/rooms\/.+\?tool=place/);
       const place = page.getByRole("button", { name: "+ Locus & cards (P)" });
       await place.waitFor();
       assert((await place.getAttribute("aria-pressed")) === "true", "not in place mode");
+    });
+
+    await check("studio: furnish a room — place, rotate (R), remove (Del), all saved", async () => {
+      const roomFurniture = async () => {
+        const rs = await json(await api.get(`${BASE}/api/rooms?palace=${ids.palace}`), 200);
+        return rs.find((r) => r.id === A.id).metadata?.furniture ?? [];
+      };
+      await page.goto(`${BASE}/palaces/${ids.palace}`);
+      await page.waitForLoadState("networkidle");
+      // Select Atrium from its room card, then open the studio (it keeps the selection).
+      await page.getByText(/1\.\s*Atrium/).first().click();
+      await page.getByRole("tab", { name: "3D Studio" }).click();
+      const canvas = page.locator("canvas").first();
+      await canvas.waitFor({ timeout: 20000 });
+      await page.locator("#studio-title").waitFor({ timeout: 10000 });
+      assert((await page.locator("#studio-title").inputValue()) === "Atrium", "studio did not open on Atrium");
+      await sleep(2500); // camera glides to the room
+      const box = await canvas.boundingBox();
+      await page.getByRole("group", { name: "Furniture palette" }).getByRole("button", { name: "Sofa", exact: true }).click();
+      const c = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+      await page.mouse.move(c.x, c.y);
+      await page.mouse.move(c.x + 2, c.y);
+      await page.mouse.click(c.x + 2, c.y);
+      await page.keyboard.press("Escape");
+      await page.getByText("All changes saved").waitFor({ timeout: 8000 });
+      let saved = await roomFurniture();
+      const sofa = saved.find((f) => f.kind === "sofa");
+      assert(sofa, `no sofa saved (${JSON.stringify(saved)})`);
+      assert(sofa.x > 0 && sofa.x < 8 && sofa.z > 0 && sofa.z < 6, `sofa outside the room: ${sofa.x}, ${sofa.z}`);
+      await page.getByRole("button", { name: "Select sofa" }).click();
+      await page.keyboard.press("r");
+      await sleep(1200);
+      saved = await roomFurniture();
+      assert(saved.find((f) => f.id === sofa.id)?.rot === 90, "R did not rotate the sofa");
+      await page.keyboard.press("Delete");
+      await sleep(1200);
+      saved = await roomFurniture();
+      assert(!saved.some((f) => f.id === sofa.id), "Delete did not remove the sofa");
+      await shot(page, "studio-furnished");
+      return `sofa at (${sofa.x}, ${sofa.z}), rotated, removed`;
+    });
+
+    await check("walk: furniture blocks walking (an armchair in the way stops you)", async () => {
+      // Put an armchair in the middle of the Atrium through the API, then walk into it.
+      const rs = await json(await api.get(`${BASE}/api/rooms?palace=${ids.palace}`), 200);
+      const atrium = rs.find((r) => r.id === A.id);
+      await json(
+        await api.put(`${BASE}/api/rooms/${A.id}`, { data: { metadata: { ...atrium.metadata, furniture: [{ id: "chair1", kind: "armchair", x: 4, z: 3, rot: 0 }] } } }),
+        200
+      );
+      await openWalk(page, A.id);
+      await page.evaluate(() => window.__walk.teleport(4, 1, 0, 0)); // south of the chair, facing north
+      await page.keyboard.down("w");
+      await sleep(1500);
+      await page.keyboard.up("w");
+      const pose = await page.evaluate(() => ({ ...window.__walk.pose() }));
+      // Chair front edge is at z = 3 - 0.425; the walker (r 0.35) must stop short of it.
+      assert(pose.z < 3 - 0.425 - 0.3, `walked into the armchair (z ${pose.z.toFixed(2)})`);
+      await json(await api.put(`${BASE}/api/rooms/${A.id}`, { data: { metadata: { ...atrium.metadata, furniture: [] } } }), 200);
+      return `stopped at z ${pose.z.toFixed(2)}`;
     });
 
     // -------------------------------------------------------------- room editor
@@ -668,7 +728,11 @@ async function cleanup(userIds) {
     async function openWalk(p, roomId, query = "?debug=1") {
       await p.goto(`${BASE}/walk/${roomId}${query}`);
       await p.locator("canvas").first().waitFor({ timeout: 15000 });
-      if (query.includes("debug")) await p.waitForFunction(() => !!window.__walk, null, { timeout: 15000 });
+      if (query.includes("debug")) {
+        await p.waitForFunction(() => !!window.__walk, null, { timeout: 15000 });
+        // The fly-in owns the camera until it lands at eye level.
+        await p.waitForFunction(() => window.__walk.introDone?.() !== false, null, { timeout: 15000 });
+      }
       await sleep(1500);
     }
 
@@ -920,7 +984,7 @@ async function cleanup(userIds) {
         }
         await page.goto(`${BASE}/palaces/${ids.palace}`);
         await page.waitForLoadState("networkidle");
-        await page.getByRole("tab", { name: "3D Palace" }).click();
+        await page.getByRole("tab", { name: "3D Studio" }).click();
         const canvas = page.locator("canvas").first();
         await canvas.waitFor({ timeout: 20000 });
         await sleep(2000);
@@ -970,6 +1034,50 @@ async function cleanup(userIds) {
         return `${pages} page(s) -> ${path.relative(root, pdf)}`;
       } finally {
         await page.emulateMedia({ media: null });
+      }
+    });
+
+    await check("practice: one place to review, leading with the walk", async () => {
+      await page.goto(`${BASE}/practice`);
+      await page.getByRole("heading", { level: 1, name: "Practice" }).waitFor({ timeout: 15000 });
+      const walk = page.getByRole("link", { name: /Walk your (due )?loci/ }).first();
+      await walk.waitFor({ timeout: 10000 });
+      assert(/\/walk\/palace\/.+\?tour=1/.test(await walk.getAttribute("href")), "Practice does not lead with a palace walk");
+      assert(/\/study\/palace\//.test(await page.getByRole("link", { name: /Quick review/ }).first().getAttribute("href")), "no quick review fallback");
+    });
+
+    await check("appearance: palettes switch the whole UI and persist", async () => {
+      await page.goto(`${BASE}/home`);
+      await page.waitForLoadState("networkidle");
+      // The token itself (the body's colour animates over 0.2 s).
+      const bg = () => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--background").trim());
+      const before = await bg();
+      await page.getByRole("button", { name: "Appearance" }).first().click();
+      await page.getByRole("radio", { name: /Library/ }).click();
+      assert((await page.evaluate(() => document.documentElement.dataset.palette)) === "library", "palette attribute not set");
+      const after = await bg();
+      assert(before !== after, "background did not change with the palette");
+      await page.reload();
+      await page.waitForLoadState("networkidle");
+      assert((await page.evaluate(() => document.documentElement.dataset.palette)) === "library", "palette did not persist");
+      await page.getByRole("button", { name: "Appearance" }).first().click();
+      await page.getByRole("radio", { name: /Aegean/ }).click();
+      assert((await page.evaluate(() => document.documentElement.dataset.palette)) === undefined, "could not switch back to Aegean");
+      return `${before} -> ${after}`;
+    });
+
+    await check("phone: bottom tab bar on pages, none in walk mode", async () => {
+      const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2, storageState: await ctx.storageState() });
+      const p = await phone.newPage();
+      try {
+        await p.goto(`${BASE}/home`);
+        const bar = p.getByRole("navigation", { name: "Main" });
+        await bar.waitFor({ timeout: 10000 });
+        for (const t of ["Home", "Practice", "Palaces", "Decks", "Profile"]) await bar.getByRole("link", { name: t }).waitFor();
+        await openWalk(p, A.id, "");
+        assert((await p.getByRole("navigation", { name: "Main" }).count()) === 0, "tab bar covers walk mode");
+      } finally {
+        await phone.close();
       }
     });
 

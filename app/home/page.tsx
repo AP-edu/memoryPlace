@@ -6,6 +6,7 @@ import { useSession } from "next-auth/react";
 import { useFetch } from "@/hooks/useFetch";
 import OnboardingOverlay from "@/components/OnboardingOverlay";
 import PalaceList from "@/components/palaces/PalaceList";
+import { Footprints, Zap } from "lucide-react";
 import type { HomeSummary } from "@/lib/homeSummary";
 import { PageSkeleton } from "@/components/ui/Skeleton";
 
@@ -107,9 +108,14 @@ export default function HomePage() {
                 {cont.due > 0 ? ` · ${cont.due} due` : ""}
               </p>
             </div>
-            <Link href={`/study/palace/${cont.palaceId}`} className="btn-primary">
-              Study now →
-            </Link>
+            <div className="flex flex-wrap gap-2">
+              <Link href={`/walk/palace/${cont.palaceId}?tour=1`} className="btn-primary">
+                <Footprints className="h-4 w-4" aria-hidden /> Walk your due loci
+              </Link>
+              <Link href={`/study/palace/${cont.palaceId}`} className="btn-outline">
+                <Zap className="h-4 w-4" aria-hidden /> Quick review
+              </Link>
+            </div>
           </div>
           <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted" aria-hidden>
             <div
