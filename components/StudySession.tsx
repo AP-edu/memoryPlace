@@ -10,6 +10,7 @@ import type { ReviewPayload, SessionAnswer } from "@/lib/reviewTypes";
 import { cardBack, cardFront } from "@/types/database";
 import { useLevelPlan } from "@/hooks/useLevelPlan";
 import MiniMap from "@/components/scene3d/MiniMap";
+import { useRoomAccent } from "@/hooks/useRoomAccent";
 
 type Mode = "due" | "walk";
 
@@ -46,6 +47,8 @@ export default function StudySession({
   // review still happens "at" the locus (the point of the method).
   const plan = useLevelPlan(card?.palaceId, card?.roomId);
   const locusN = plan?.loci.find((l) => l.locusId === card?.locusId)?.n ?? null;
+  // Each card's room colours the screen: moving between rooms is visible.
+  const accent = useRoomAccent(card?.roomColor);
 
   function switchMode(next: Mode) {
     setMode(next);
@@ -182,7 +185,7 @@ export default function StudySession({
   }
 
   return (
-    <div className="mx-auto max-w-lg p-4 sm:p-6">
+    <div className="mx-auto max-w-lg p-4 transition-colors sm:p-6" style={accent}>
       <div className="mb-4 flex items-center justify-between gap-2">
         <Link href={backHref} className="btn-ghost !px-3 !py-1.5 !text-xs">
           {"\u2190 "}{backLabel}

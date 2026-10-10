@@ -728,7 +728,11 @@ async function cleanup(userIds) {
     async function openWalk(p, roomId, query = "?debug=1") {
       await p.goto(`${BASE}/walk/${roomId}${query}`);
       await p.locator("canvas").first().waitFor({ timeout: 15000 });
-      if (query.includes("debug")) await p.waitForFunction(() => !!window.__walk, null, { timeout: 15000 });
+      if (query.includes("debug")) {
+        await p.waitForFunction(() => !!window.__walk, null, { timeout: 15000 });
+        // The fly-in owns the camera until it lands at eye level.
+        await p.waitForFunction(() => window.__walk.introDone?.() !== false, null, { timeout: 15000 });
+      }
       await sleep(1500);
     }
 
@@ -1030,6 +1034,50 @@ async function cleanup(userIds) {
         return `${pages} page(s) -> ${path.relative(root, pdf)}`;
       } finally {
         await page.emulateMedia({ media: null });
+      }
+    });
+
+    await check("practice: one place to review, leading with the walk", async () => {
+      await page.goto(`${BASE}/practice`);
+      await page.getByRole("heading", { level: 1, name: "Practice" }).waitFor({ timeout: 15000 });
+      const walk = page.getByRole("link", { name: /Walk your (due )?loci/ }).first();
+      await walk.waitFor({ timeout: 10000 });
+      assert(/\/walk\/palace\/.+\?tour=1/.test(await walk.getAttribute("href")), "Practice does not lead with a palace walk");
+      assert(/\/study\/palace\//.test(await page.getByRole("link", { name: /Quick review/ }).first().getAttribute("href")), "no quick review fallback");
+    });
+
+    await check("appearance: palettes switch the whole UI and persist", async () => {
+      await page.goto(`${BASE}/home`);
+      await page.waitForLoadState("networkidle");
+      // The token itself (the body's colour animates over 0.2 s).
+      const bg = () => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--background").trim());
+      const before = await bg();
+      await page.getByRole("button", { name: "Appearance" }).first().click();
+      await page.getByRole("radio", { name: /Library/ }).click();
+      assert((await page.evaluate(() => document.documentElement.dataset.palette)) === "library", "palette attribute not set");
+      const after = await bg();
+      assert(before !== after, "background did not change with the palette");
+      await page.reload();
+      await page.waitForLoadState("networkidle");
+      assert((await page.evaluate(() => document.documentElement.dataset.palette)) === "library", "palette did not persist");
+      await page.getByRole("button", { name: "Appearance" }).first().click();
+      await page.getByRole("radio", { name: /Aegean/ }).click();
+      assert((await page.evaluate(() => document.documentElement.dataset.palette)) === undefined, "could not switch back to Aegean");
+      return `${before} -> ${after}`;
+    });
+
+    await check("phone: bottom tab bar on pages, none in walk mode", async () => {
+      const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2, storageState: await ctx.storageState() });
+      const p = await phone.newPage();
+      try {
+        await p.goto(`${BASE}/home`);
+        const bar = p.getByRole("navigation", { name: "Main" });
+        await bar.waitFor({ timeout: 10000 });
+        for (const t of ["Home", "Practice", "Palaces", "Decks", "Profile"]) await bar.getByRole("link", { name: t }).waitFor();
+        await openWalk(p, A.id, "");
+        assert((await p.getByRole("navigation", { name: "Main" }).count()) === 0, "tab bar covers walk mode");
+      } finally {
+        await phone.close();
       }
     });
 

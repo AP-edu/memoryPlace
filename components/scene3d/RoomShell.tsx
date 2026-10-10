@@ -79,6 +79,57 @@ function useFloorTexture(floor: string, width: number, depth: number): THREE.Tex
   return tex;
 }
 
+/**
+ * A door leaf hinged at `hinge` (scene coords). Closed it fills the opening
+ * along the wall; open it has swung 90° into the room. With `animate` it
+ * opens when the camera comes within reach and eases shut behind you.
+ */
+function DoorLeaf({
+  hinge,
+  center,
+  along,
+  inward,
+  length,
+  height,
+  color,
+  animate,
+}: {
+  hinge: [number, number, number];
+  center: [number, number, number];
+  along: [number, number, number];
+  inward: [number, number, number];
+  length: number;
+  height: number;
+  color: string;
+  animate: boolean;
+}) {
+  const pivot = useRef<THREE.Group>(null);
+  const open = useRef(animate ? 0 : 1);
+  // Y rotation taking the closed direction (along the wall) to the open one (into the room).
+  const fullOpen = Math.atan2(along[2] * inward[0] - along[0] * inward[2], along[0] * inward[0] + along[2] * inward[2]);
+  useFrame(({ camera }, dt) => {
+    const p = pivot.current;
+    if (!p) return;
+    let target = 1;
+    if (animate) {
+      const dx = camera.position.x - center[0];
+      const dz = camera.position.z - center[2];
+      target = dx * dx + dz * dz < 2.6 * 2.6 ? 1 : 0;
+    }
+    open.current += (target - open.current) * Math.min(1, dt * 3.5);
+    p.rotation.y = fullOpen * open.current;
+  });
+  const alongX = Math.abs(along[0]) > Math.abs(along[2]);
+  return (
+    <group ref={pivot} position={[hinge[0], height / 2 + 0.01, hinge[2]]}>
+      <mesh position={[(along[0] * length) / 2, 0, (along[2] * length) / 2]} raycast={noRaycast}>
+        <boxGeometry args={alongX ? [length, height, 0.04] : [0.04, height, length]} />
+        <meshStandardMaterial color={color} roughness={0.7} />
+      </mesh>
+    </group>
+  );
+}
+
 const SKIRT_H = 0.14;
 const CORNICE_H = 0.12;
 
@@ -100,6 +151,7 @@ export function RoomShell({
   furnitureDraggingId,
   onFurnitureDown,
   onFurnitureClick,
+  animateDoors = false,
 }: {
   room: Room;
   openings: Opening[];
@@ -116,6 +168,8 @@ export function RoomShell({
   furnitureDraggingId?: string | null;
   onFurnitureDown?: (item: FurnitureItem, e: ThreeEvent<PointerEvent>) => void;
   onFurnitureClick?: (item: FurnitureItem, e: ThreeEvent<MouseEvent>) => void;
+  /** Walk mode: door leaves swing open as the camera approaches and close behind it. */
+  animateDoors?: boolean;
 }) {
   const size = { width: room.width, depth: room.depth };
   const wallRefs = useRef<Partial<Record<WallFace, THREE.Group | null>>>({});
@@ -293,11 +347,17 @@ export function RoomShell({
                         <boxGeometry args={box(w, J, WALL_THICK + 0.05)} />
                         <meshStandardMaterial color={colors.door} roughness={0.6} />
                       </mesh>
-                      {/* door leaf, hinged at one jamb and swung open into the room */}
-                      <mesh position={at(-w / 2 + J + 0.02, WALL_THICK / 2 + (w - 2 * J) / 2, (top - J) / 2)} raycast={noRaycast}>
-                        <boxGeometry args={box(0.04, top - J - 0.02, w - 2 * J)} />
-                        <meshStandardMaterial color={colors.door} roughness={0.7} />
-                      </mesh>
+                      {/* door leaf, hinged at one jamb; swings open as you approach in walk mode */}
+                      <DoorLeaf
+                        hinge={at(-w / 2 + J, WALL_THICK / 2, 0)}
+                        center={at(0, WALL_THICK / 2, 0)}
+                        along={toScene({ x: along.x, y: 0, z: along.z })}
+                        inward={toScene({ x: n.x, y: 0, z: n.z })}
+                        length={w - 2 * J}
+                        height={top - J - 0.02}
+                        color={colors.door}
+                        animate={animateDoors}
+                      />
                     </>
                   )}
                 </group>
@@ -362,6 +422,7 @@ function Plaque({
   frame,
   active,
   ghost,
+  pulseAt,
   raycast,
   onPointerDown,
   onClick,
@@ -371,12 +432,24 @@ function Plaque({
   frame: string;
   active: boolean;
   ghost?: boolean;
+  /** performance.now() of the last arrival here: the plaque gives a short pulse. */
+  pulseAt?: number | null;
   raycast: THREE.Mesh["raycast"];
   onPointerDown?: (e: ThreeEvent<PointerEvent>) => void;
   onClick?: (e: ThreeEvent<MouseEvent>) => void;
 }) {
   const tex = useMemo(() => plaqueFace(label, face), [label, face]);
-  const scale = active ? 1.15 : 1;
+  const group = useRef<THREE.Group>(null);
+  useFrame(() => {
+    const g = group.current;
+    if (!g) return;
+    let s = active ? 1.15 : 1;
+    if (pulseAt != null) {
+      const t = (performance.now() - pulseAt) / 650;
+      if (t >= 0 && t < 1) s *= 1 + 0.35 * Math.sin(Math.PI * t) * (1 - t);
+    }
+    g.scale.setScalar(s);
+  });
   // Never leave the hover cursor behind if a hovered plaque goes away.
   useEffect(
     () => () => {
@@ -385,7 +458,7 @@ function Plaque({
     []
   );
   return (
-    <group scale={[scale, scale, scale]}>
+    <group ref={group}>
       <mesh
         rotation={[Math.PI / 2, 0, 0]}
         raycast={raycast}
@@ -453,6 +526,7 @@ export function LocusMarkers({
   labelFade,
   ghost = false,
   results,
+  pulse,
   draggingId,
   onMarkerDown,
   onMarkerClick,
@@ -472,6 +546,8 @@ export function LocusMarkers({
   ghost?: boolean;
   /** Tour grades per locus id: recalled plaques turn green, missed ones red. */
   results?: Record<string, boolean> | null;
+  /** Arrival pulse: which plaque, and when (performance.now()). */
+  pulse?: { id: string; at: number } | null;
   draggingId?: string | null;
   onMarkerDown?: (locus: Locus, e: ThreeEvent<PointerEvent>) => void;
   onMarkerClick?: (locus: Locus, e: ThreeEvent<MouseEvent>) => void;
@@ -529,6 +605,7 @@ export function LocusMarkers({
                 frame={colors.door}
                 active={active}
                 ghost={ghost}
+                pulseAt={pulse?.id === locus.id ? pulse.at : null}
                 // Restore explicitly: R3F ignores `undefined` props, which left a marker unpickable after its first drag.
                 raycast={draggingId === locus.id ? noRaycast : THREE.Mesh.prototype.raycast}
                 onPointerDown={onMarkerDown ? (e) => onMarkerDown(locus, e) : undefined}
@@ -583,25 +660,27 @@ function CardStack({ count, yaw, colors }: { count: number; yaw: number; colors:
   );
 }
 
-// Day: warm sun over white marble. Night: cool moonlight. A key light from the
+// Lighting comes from the palette (--scene-key/-fill/-hemi/-boost): warm sun
+// over marble, cool moonlight, a candlelit study... A key light from the
 // south-east plus a weaker fill from the north-west give all four wall
-// orientations a different shade, so corners and depth read at a glance;
-// ambient stays low (flat ambient is what made every wall the same grey).
+// orientations a different shade; ambient stays low (flat ambient is what
+// made every wall the same grey).
 export function SceneLights({ colors }: { colors: SceneColors }) {
+  const b = Number.parseFloat(colors.boost) || 1;
   return colors.night ? (
     <>
-      <hemisphereLight args={["#c9d5ff", colors.floor, 0.9]} />
-      <ambientLight intensity={0.35} color="#e4eaff" />
+      <hemisphereLight args={[colors.hemi, colors.floor, 0.9 * b]} />
+      <ambientLight intensity={0.35 * b} color={colors.hemi} />
       {/* From the moon's side of the sky (see SceneSky). */}
-      <directionalLight position={[6, 9, -8]} intensity={1.6} color="#dbe4ff" />
-      <directionalLight position={[-5, 6, 7]} intensity={0.45} color="#9fb2ff" />
+      <directionalLight position={[6, 9, -8]} intensity={1.6 * b} color={colors.key} />
+      <directionalLight position={[-5, 6, 7]} intensity={0.45 * b} color={colors.fill} />
     </>
   ) : (
     <>
-      <hemisphereLight args={["#f1f7ff", colors.floor, 0.95]} />
-      <ambientLight intensity={0.25} />
-      <directionalLight position={[7, 12, 4.5]} intensity={2.3} color="#fff1d6" />
-      <directionalLight position={[-4, 7, -8]} intensity={0.6} color="#dce9ff" />
+      <hemisphereLight args={[colors.hemi, colors.floor, 0.95 * b]} />
+      <ambientLight intensity={0.25 * b} />
+      <directionalLight position={[7, 12, 4.5]} intensity={2.3 * b} color={colors.key} />
+      <directionalLight position={[-4, 7, -8]} intensity={0.6 * b} color={colors.fill} />
     </>
   );
 }

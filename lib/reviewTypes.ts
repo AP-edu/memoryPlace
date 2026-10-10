@@ -11,6 +11,8 @@ export interface ReviewItem {
   roomTitle: string;
   /** Palace the locus's room belongs to (null for unanchored deck cards). */
   palaceId: string | null;
+  /** The room's theme colour (#rrggbb) — the study screen takes it as its accent. */
+  roomColor: string | null;
   roomOrder: number;
   position: number;
   review: CardReview | null;

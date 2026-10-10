@@ -9,6 +9,7 @@ import type { Card, Locus, Opening, Room } from "@/types/database";
 import { sortPlayQueue, type QueueItem } from "@/lib/srs";
 import WalkView from "@/components/scene3d/WalkView";
 import type { SessionAnswer } from "@/lib/reviewTypes";
+import { useRoomAccent } from "@/hooks/useRoomAccent";
 
 // Palace-scope walk-and-answer tour (Phase D): one room at a time in
 // canonical traversal order (creation order), due-first queue per room.
@@ -48,6 +49,7 @@ export default function PalaceWalkPage() {
 
   const roomTitles = useMemo(() => Object.fromEntries((orderedRooms ?? []).map((r) => [r.id, r.title])), [orderedRooms]);
   const levelPlan = useLevelPlan(palaceId, currentId);
+  const accent = useRoomAccent(orderedRooms?.find((r) => r.id === currentId)?.background);
 
   const goRoom = useCallback(
     (id: string) => {
@@ -124,7 +126,7 @@ export default function PalaceWalkPage() {
   const next = roomIndex >= 0 && roomIndex < orderedRooms.length - 1 ? orderedRooms[roomIndex + 1] : null;
 
   return (
-    <div>
+    <div style={accent}>
       <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-3 sm:px-6">
         <p className="text-sm text-muted-foreground">
           Palace tour · room {roomIndex + 1} of {orderedRooms.length} · {room.title}
@@ -155,6 +157,7 @@ export default function PalaceWalkPage() {
         onTourComplete={onTourComplete}
         levelPlan={levelPlan}
         onGoRoom={goRoom}
+        intro
         autoTour={tourParam}
         cardOrder={cardOrder}
         className="h-[calc(100dvh-3.5rem)]"

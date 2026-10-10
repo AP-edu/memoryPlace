@@ -157,3 +157,42 @@ export function circleHitsRect(cx: number, cz: number, r: number, rect: Rect): b
   const nz = Math.min(rect.z1, Math.max(rect.z0, cz));
   return (cx - nx) ** 2 + (cz - nz) ** 2 < r * r;
 }
+
+/** A solid piece's footprint plus its height (for line-of-sight checks). */
+export interface Blocker extends Rect {
+  h: number;
+}
+
+/** Solid pieces as sight blockers; columns reach the ceiling. */
+export function blockers(items: FurnitureItem[], roomHeight: number): Blocker[] {
+  return items
+    .filter((i) => FURNITURE[i.kind].solid)
+    .map((i) => ({ ...itemRect(i), h: i.kind === "column" ? roomHeight : FURNITURE[i.kind].h }));
+}
+
+/**
+ * Where segment a->b first enters rect r, as t in [0, 1], or null if it
+ * misses (Liang–Barsky clipping on the plan).
+ */
+export function segmentEntersRect(ax: number, az: number, bx: number, bz: number, r: Rect): number | null {
+  let t0 = 0;
+  let t1 = 1;
+  const dx = bx - ax;
+  const dz = bz - az;
+  for (const [p, q] of [
+    [-dx, ax - r.x0],
+    [dx, r.x1 - ax],
+    [-dz, az - r.z0],
+    [dz, r.z1 - az],
+  ]) {
+    if (p === 0) {
+      if (q < 0) return null;
+      continue;
+    }
+    const t = q / p;
+    if (p < 0) t0 = Math.max(t0, t);
+    else t1 = Math.min(t1, t);
+    if (t0 > t1) return null;
+  }
+  return t0;
+}

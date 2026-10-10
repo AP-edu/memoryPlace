@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clampToRoom, footprint, FURNITURE, FURNITURE_KINDS, furnitureOf, itemRect, nextRotation, normalizeFurniture, obstacles, placeAt } from "./furniture";
+import { blockers, clampToRoom, footprint, FURNITURE, FURNITURE_KINDS, furnitureOf, itemRect, nextRotation, normalizeFurniture, obstacles, placeAt } from "./furniture";
 import { stepPlayer } from "./walk";
 
 const room = { width: 6, depth: 4 };
@@ -69,5 +69,31 @@ describe("walking around furniture", () => {
     let pose = { x: 3, z: 2, yaw: Math.PI, pitch: 0 }; // inside the table, facing south
     for (let i = 0; i < 40; i++) pose = stepPlayer(pose, { throttle: 1, strafe: 0 }, 0.05, room, [], { obstacles: table });
     expect(pose.z).toBeLessThan(1.3);
+  });
+});
+
+describe("tour viewpoints step around furniture", () => {
+  const roomFull = { id: "r", palace_id: "p", user_id: "u", title: "R", width: 8, depth: 6, height: 3, pos_x: 0, pos_z: 0, level_id: null, rotation: 0, background: null, metadata: {}, outline: null, created_at: "" } as unknown as import("@/types/database").Room;
+  const locus = { wall: "south" as const, wall_offset: 0.5, height: 1.5 };
+  it("without furniture stands the full distance back", async () => {
+    const { viewPoseForLocus } = await import("./scene3d");
+    expect(viewPoseForLocus(locus, roomFull, 2.6).z).toBeCloseTo(2.6, 5);
+  });
+  it("steps closer when a bookshelf blocks the line of sight", async () => {
+    const { viewPoseForLocus } = await import("./scene3d");
+    const shelf = blockers(normalizeFurniture([{ id: "b", kind: "bookshelf", x: 4, z: 2.0, rot: 0 }], roomFull), 3);
+    const pose = viewPoseForLocus(locus, roomFull, 2.6, 0.6, shelf);
+    expect(pose.z).toBeLessThan(1.8);
+  });
+  it("a low table in between does not block the view", async () => {
+    const { viewPoseForLocus } = await import("./scene3d");
+    const table = blockers(normalizeFurniture([{ id: "t", kind: "table", x: 4, z: 1.2, rot: 0 }], roomFull), 3);
+    expect(viewPoseForLocus(locus, roomFull, 2.6, 0.6, table).z).toBeCloseTo(2.6, 5);
+  });
+  it("never stands inside a piece", async () => {
+    const { viewPoseForLocus } = await import("./scene3d");
+    const chair = blockers(normalizeFurniture([{ id: "c", kind: "armchair", x: 4, z: 2.6, rot: 0 }], roomFull), 3);
+    const pose = viewPoseForLocus(locus, roomFull, 2.6, 0.6, chair);
+    expect(chair.every((b) => !(pose.x > b.x0 && pose.x < b.x1 && pose.z > b.z0 && pose.z < b.z1))).toBe(true);
   });
 });

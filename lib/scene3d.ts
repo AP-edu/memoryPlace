@@ -9,6 +9,7 @@
 import type { Locus, Opening, Room, WallFace } from "@/types/database";
 import { clamp01, locusWorldPos, wallLength, wallPoint } from "./geometry";
 import { openingAt, solidOffset, wallSpans, EYE_HEIGHT, type Pose } from "./walk";
+import { circleHitsRect, segmentEntersRect, type Blocker } from "./furniture";
 
 export interface Vec3 {
   x: number;
@@ -179,15 +180,34 @@ export function viewPoseForLocus(
   locus: Pick<Locus, "wall" | "wall_offset" | "height">,
   room: Room,
   dist = 2.2,
-  margin = 0.6
+  margin = 0.6,
+  furniture: Blocker[] = []
 ): Pose {
   const p = locusWorldPos(locus, room);
   const n = inwardNormal(p.wall);
-  const x = Math.min(room.width - margin, Math.max(margin, p.x + n.x * dist));
-  const z = Math.min(room.depth - margin, Math.max(margin, p.z + n.z * dist));
-  const dx = p.x - x;
-  const dz = p.z - z;
-  return { x, z, yaw: yawTo(dx, dz), pitch: Math.atan2(p.y - EYE_HEIGHT, Math.hypot(dx, dz)) };
+  const poseAt = (d: number): Pose => {
+    const x = Math.min(room.width - margin, Math.max(margin, p.x + n.x * d));
+    const z = Math.min(room.depth - margin, Math.max(margin, p.z + n.z * d));
+    const dx = p.x - x;
+    const dz = p.z - z;
+    return { x, z, yaw: yawTo(dx, dz), pitch: Math.atan2(p.y - EYE_HEIGHT, Math.hypot(dx, dz)) };
+  };
+  if (furniture.length === 0) return poseAt(dist);
+  // Step closer until we're not standing in a piece of furniture and can see
+  // the plaque over everything in between (a low table doesn't block the view
+  // from eye height; a bookshelf does).
+  const clear = (pose: Pose) =>
+    furniture.every((b) => {
+      if (circleHitsRect(pose.x, pose.z, 0.45, b)) return false;
+      const t = segmentEntersRect(pose.x, pose.z, p.x, p.z, b);
+      if (t === null) return true;
+      return b.h < EYE_HEIGHT + (p.y - EYE_HEIGHT) * t - 0.05;
+    });
+  for (const k of [1, 0.8, 0.62, 0.45]) {
+    const pose = poseAt(dist * k);
+    if (clear(pose)) return pose;
+  }
+  return poseAt(dist);
 }
 
 export function easeInOut(t: number): number {
@@ -330,9 +350,9 @@ export function navStep(length: number, index: number, dir: 1 | -1): number {
 }
 
 /** Where the camera goes for a stop: framing a locus, or just inside a door looking out through it. */
-export function stopPose(stop: NavStop<Locus>, room: Room): Pose {
+export function stopPose(stop: NavStop<Locus>, room: Room, furniture: Blocker[] = []): Pose {
   if (stop.kind === "locus") {
-    const p = viewPoseForLocus(stop.locus, room, 2.6);
+    const p = viewPoseForLocus(stop.locus, room, 2.6, 0.6, furniture);
     return { ...p, pitch: p.pitch - 0.22 };
   }
   const inside = spawnAtDoor(stop.opening, room, 1.4);

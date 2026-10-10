@@ -11,6 +11,7 @@ import { httpLociActions } from "@/components/scene3d/actions";
 import ImportFromDeck from "@/components/decks/ImportFromDeck";
 import SendToDeck from "@/components/decks/SendToDeck";
 import { PageSkeleton } from "@/components/ui/Skeleton";
+import { useRoomAccent } from "@/hooks/useRoomAccent";
 
 // three.js is client-only and heavy: load the 3D editor on demand.
 // If WebGL is unavailable (e.g. hardware acceleration off) the editor shows
@@ -37,6 +38,7 @@ export default function RoomPage() {
 
   const toolParam = useSearchParam("tool");
   const levelPlan = useLevelPlan(room?.palace_id, room?.id, { loci, openings });
+  const accent = useRoomAccent(room?.background);
   const [formError, setFormError] = useState<string | null>(null);
   const [deckPanel, setDeckPanel] = useState<"import" | "send" | null>(null);
 
@@ -135,7 +137,7 @@ export default function RoomPage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl p-4 sm:p-6">
+    <div className="mx-auto max-w-5xl p-4 sm:p-6" style={accent}>
       {room?.palace_id && (
         <Link href={`/palaces/${room.palace_id}`} className="btn-ghost">
           {"\u2190 "}
