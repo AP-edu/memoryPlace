@@ -77,6 +77,52 @@ Bugs found and fixed:
 Still unverified: a real phone (touch is emulated via CDP) and the browser's
 own Print dialog (the PDF comes from the same print-media rendering).
 
+## Launch status + next session: get ready for beta users (2026-10-10)
+
+**Live:** https://memoryplace-app.vercel.app (Vercel project formerly
+`memory-place-pizs`; the duplicate `memory-place` was deleted, and
+`memory-place.vercel.app` belongs to someone else).
+
+**Done this session:** Vercel build fixed (fonts committed in `app/fonts`,
+`next/font/local`), owner-only reads for loci/cards (two-user probe: no
+leaks), two databases (production = "Memory PALce" `wpgqduwltlcpzkgxrwbt`;
+dev = `suxxnrigdjfelxwxggun`, see `docs/ENVIRONMENTS.md`), both on the same
+12 migrations. This PC's `.env.local` points at dev; production keys are
+backed up in `.env .prod-backup.local` (gitignored, not loaded by Next).
+Livecheck 45/45 against dev.
+
+**Next session: set up for testers and new users (owner wants it free until
+people like it: no paid domain yet).**
+
+1. **Password reset email, free.** Resend needs a verified domain, so use a
+   dedicated Gmail account with 2-step verification and an app password,
+   sent over SMTP (~500/day). Add a Gmail/SMTP path to `lib/mailer.ts`
+   (`SMTP_USER`, `SMTP_PASS`; probably `nodemailer`, pinned), keep Resend
+   for when a domain exists, test from dev, then set the vars in Vercel
+   Production. Until then the reset page says reset isn't available.
+2. **Interim: admin can help a locked-out user.** `/admin` only lists and
+   deletes palaces. Consider an admin "make reset link" action (an admin
+   creates a one-time link and sends it to the person directly).
+3. **Email verification on signup** (none today: anyone can sign up as any
+   address). Worth adding once email sending works.
+4. **Google sign-in.** Google Cloud Console: OAuth consent screen (Testing
+   mode allows up to 100 listed test users, which suits a beta), OAuth
+   client for a web app, redirect URI
+   `https://memoryplace-app.vercel.app/api/auth/callback/google`, then
+   `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` in Vercel Production. The
+   button appears by itself once set.
+5. **Tester experience:** an invite message + a way to send feedback (a
+   simple form or a feedback link in the app), and how to watch for errors
+   (Vercel logs).
+6. **Confirm the owner's setup items:** laptop `.env.local` on dev, Vercel
+   variables split (Production = production database, Preview = dev,
+   `NEXTAUTH_URL` Production only), production `NEXTAUTH_SECRET` different
+   from the local one, both database passwords reset (they were pasted in
+   chat).
+7. **Keep in mind:** free Supabase projects pause after a week idle (dev
+   will; production too if the beta goes quiet). GitHub reports 1 high + 2
+   moderate dependency vulnerabilities: deliberate upgrades only.
+
 ## One building + famous places (2026-10-10, Phase M)
 
 User asks: "full 3D render of what the blueprint looks like... recreate
